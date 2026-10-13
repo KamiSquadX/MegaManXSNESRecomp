@@ -62,6 +62,7 @@ static void coop_x_graphics_checks(const char *fixture) {
   for(unsigned tick=0;tick<96;++tick) {
     unsigned pad=tick<35 ? SNES_PAD_RIGHT : tick<45 ? SNES_PAD_B :
         tick<65 ? 0 : tick<85 ? SNES_PAD_LEFT|SNES_PAD_Y : 0;
+    if(tick>=10 && tick<20 && (g_ram[0x1f99]&8)) pad|=SNES_PAD_A;
     coop_frames(1,0,pad);
     s=MmxCoopGetState(); const uint8_t *body=s.players[1].body;
     memcpy(original_vram,g_ppu->vram,sizeof(original_vram));

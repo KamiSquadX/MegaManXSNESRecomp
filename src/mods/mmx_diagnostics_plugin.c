@@ -1,4 +1,5 @@
 #include "mod_runtime.h"
+#include "mmx_replay.h"
 #include <stdlib.h>
 #include "mmx_coop.h"
 #include "mmx_hitbox_overlay.h"
@@ -7,6 +8,7 @@ static int g_mmx_tier2_diagnostics_active;
 
 static void mmx_tier2_diagnostics_reset(void) {
   g_mmx_tier2_diagnostics_active = 0;
+  MmxReplayEnable(false);
   MmxCoopSetDiagnosticsEnabled(false);
   MmxHitboxOverlaySetEnabled(false);
 }
@@ -29,9 +31,11 @@ static void mmx_enable_netplay_diagnostics(void) {
 
 static void mmx_tier2_diagnostics_activate(void) {
   g_mmx_tier2_diagnostics_active = 1;
+  MmxReplayEnable(true);
   mmx_enable_netplay_diagnostics();
 }
 static void mmx_coop_diagnostics_activate(void) {
+  MmxReplayEnable(true);
   MmxCoopSetDiagnosticsEnabled(true);
 }
 static void mmx_hitbox_overlay_activate(void) {

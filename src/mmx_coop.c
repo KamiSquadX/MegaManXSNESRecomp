@@ -643,13 +643,19 @@ static void place_other(uint8_t *r,uint16_t x,uint16_t y,bool preserve) {
   /* Use native player setup fields, but never inherit P1's hurt, charge,
    * movement or weapon counters. Personal inventory survives withdrawal. */
   memcpy(p->body, source->body, sizeof(p->body));
-  /* $0C38..$0C97 are the three armor-part objects. Only the same character
-   * can share them: X returning beside a world-driving Zero (who opened the
-   * boss door) took Zero's slots and lost his helmet/arm/boot sprites. */
-  uint8_t armor[0x60];memcpy(armor,p->character==source->character ? source->auxiliaries :
-      p->auxiliaries,sizeof(armor));
   memset(p->auxiliaries,0,sizeof(p->auxiliaries));memset(p->shots,0,sizeof(p->shots));
-  memcpy(p->auxiliaries,armor,sizeof(armor));
+  /* X may be joining for the first time, or returning after native death
+   * cleared his old objects. Rebuild acquired parts as $81:9D88..9DC7 does
+   * at stage entry. Neither Zero's slots nor X's previous slots describe
+   * the current shared upgrades reliably (#108). Their native object
+   * initializers fill the pose/position fields on the next controller pass. */
+  if(p->character==MMX_COOP_X) {
+    p->body[0x16]=(r[0x1f99]&1)?0x18:0;
+    for(unsigned part=0;part<3;++part) if(r[0x1f99]&(2u<<part)) {
+      uint8_t *o=p->auxiliaries+part*0x20;
+      o[0]=1;o[0x0b]=(uint8_t)part;o[0x10]=0x5d;
+    }
+  }
   memset(&p->combat,0,sizeof(p->combat));memset(&p->zero,0,sizeof(p->zero));
   p->zero.active_x=p->character==MMX_COOP_X;
   memset(p->body+0x28,0,sizeof(p->body)-0x28);

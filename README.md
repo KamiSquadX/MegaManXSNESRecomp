@@ -160,11 +160,51 @@ through STUN or through TURN, and any stalls); attach it with the log. The
 file is replaced by the next match.
 
 For intermittent co-op collision problems, tick **Co-op physics diagnostics**
-under **Mods > Developer**, then play normally. The trace is written in 32 MiB
+under **Mods > Developer** before playing. This also records a replay: both
+players' inputs, machine checkpoints, display settings and per-frame state
+checks. When the problem occurs, stop playing and zip the session's
+`logs/mmx-replay-*` files together, including **all `.replay`, `.replay.sav`,
+`.config.ini`, `.mods.toml` and `.mods.txt` files**. A `.replay` alone is insufficient.
+During netplay, collect the files from both players if possible. Describe what
+happened and roughly when. Keep your source ROMs out of the attachment.
+
+The newest six replay segments are kept (normally about a minute of gameplay;
+rollback or frequent state loads can shorten this). Each segment is capped at
+600 frame executions or 16 MiB of checkpoints. Run-ahead currently suspends
+replay capture; turn it off while collecting a report. **Tier 2 diagnostics**
+also enables replay capture. Both diagnostic options are off by default.
+
+The existing collision trace is written in 32 MiB
 numbered segments (`logs/coop-physics-<start time>-<pid>-<n>-001.csv`, `-002.csv`,
 ...); the newest 32 are kept. Attach every segment of the session. During netplay
 the same mod also writes `logs/coop-netplay-*` segments with the same name stem;
-attach those too, from both players if possible. This extra tracing is off by default.
+attach those too, from both players if possible.
+
+Developers can reproduce a capture with the same build and owned source ROMs:
+
+```sh
+python tools/replay_diagnostic.py capture.replay --exe path/to/MegaManXSNESRecomp --rom path/to/mmx.sfc --x3-rom path/to/mmx3.sfc --headless
+```
+
+The helper stages the captured settings in a new directory, replays offline,
+and stops at the first WRAM, co-op, camera-state or VRAM mismatch with a nonzero
+exit status. Use `--until N` to stop after N executions, or omit `--headless`
+to watch. A mismatch also saves `replay-divergence.sav` in the reproduction
+directory. `--check` inspects the log without starting the game. A final input
+without a completed checkpoint identifies an interrupted frame; it is reported
+as incomplete, never as a successful replay. Playback executes that final input
+so the original hang/crash can recur under a debugger. The format preserves actual
+rollback executions and restored checkpoints, so do not deduplicate frame
+numbers as an input-only CSV route would.
+
+The ROM-backed acceptance suite is `tests/test_diagnostic_replay.py`; build
+with `-DMMX_STATE_TESTS=ON` and supply `--state-tests`, `--game`, `--rom`,
+`--assets` (your extracted X3 Zero cache), and a new `--work-dir`. An optional
+`--fixture` pointing to an upgraded gameplay checkpoint also checks P2 X armor
+arrival, native checkpoint restart, and original-ROM sprite transfers during
+movement and dash.
+Supply `--x3-rom` to also exercise desktop Saber Zero playback when the saved
+offline preferences differ from the active mod selection.
 
 To see collision boxes, tick **Hitbox overlay** under **Mods > Developer**. It
 outlines each object's native hitbox: enemies red, players green (both players in

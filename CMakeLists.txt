@@ -2,6 +2,20 @@ cmake_minimum_required(VERSION 3.20)
 project(MegaManXSNESRecomp VERSION 2.2.1 LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 11)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_package(Git QUIET)
+execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --short=12 HEAD WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE MMX_SOURCE_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT MMX_SOURCE_REVISION)
+    set(MMX_SOURCE_REVISION "unknown")
+endif()
+execute_process(COMMAND "${GIT_EXECUTABLE}" describe --always --dirty --abbrev=12
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE MMX_REPLAY_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+execute_process(COMMAND "${GIT_EXECUTABLE}" describe --always --dirty --abbrev=12
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp"
+    OUTPUT_VARIABLE MMX_REPLAY_ENGINE OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+set_property(SOURCE src/mmx_replay.c APPEND PROPERTY COMPILE_DEFINITIONS
+    MMX_REPLAY_REVISION="${MMX_REPLAY_REVISION}" MMX_REPLAY_ENGINE="${MMX_REPLAY_ENGINE}")
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/mmx_weapon_sources.h"
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/generate_x_weapon_tables.py"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/data/x_weapon_assets.json"
@@ -41,7 +55,7 @@ function(add_mmx_variant TARGET GEN_DIR CFG_DIR)
     add_executable(${TARGET} ${SNESRECOMP_RUNNER_SOURCES}
         src/main.c src/mmx_startup.c src/mmx_netplay.c src/mmx_display.c src/mmx_renderer.c src/mmx_render_assets.c src/mmx_wide_policy.c
         src/mmx_00.c src/gen_stubs.c src/mmx_cpu_infra.c src/mmx_rtl.c
-        src/mmx_spc_player.c src/mods/mmx_diagnostics_plugin.c
+        src/mmx_spc_player.c src/mmx_replay.c src/mods/mmx_diagnostics_plugin.c
         src/mods/mmx_widescreen_plugin.c src/mods/mmx_msu1_plugin.c
         src/mods/mmx_hadouken_plugin.c src/mods/mmx_password_plugin.c src/mmx_password_save.cpp
         src/mods/mmx_zero_plugin.c src/mmx_zero.c src/mmx_weapons.c src/mmx_weapon_combat.c src/mmx_knc_bugfix.c src/mmx_coop.c src/mmx_coop_trace.c src/mmx_coop_view.c
@@ -52,6 +66,7 @@ function(add_mmx_variant TARGET GEN_DIR CFG_DIR)
         ${CMAKE_CURRENT_BINARY_DIR} ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     target_compile_definitions(${TARGET} PRIVATE
         SMW_DISABLE_LM=1 SYSTEM_VOLUME_MIXER_AVAILABLE=0
+        MMX_SOURCE_REVISION="${MMX_SOURCE_REVISION}"
         SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}> SNESRECOMP_REVERSE_DEBUG=0
         ${ARGN})
     if(NOT MSVC)
@@ -116,8 +131,9 @@ function(add_mmx_variant TARGET GEN_DIR CFG_DIR)
         snesrecomp_enable_recomp_net(${TARGET})
     endif()
 endfunction()
-set_property(SOURCE src/main.c APPEND PROPERTY COMPILE_DEFINITIONS
-    SNESRECOMP_BUILD_VERSION="${SNESRECOMP_BUILD_VERSION}")
+set_property(SOURCE src/main.c src/mmx_replay.c APPEND PROPERTY COMPILE_DEFINITIONS
+    SNESRECOMP_BUILD_VERSION="${SNESRECOMP_BUILD_VERSION}"
+    MMX_SOURCE_REVISION="${MMX_SOURCE_REVISION}")
 set(MMX_GEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/gen" CACHE PATH
     "Generated USA program directory (allows isolated coverage comparisons)")
 add_mmx_variant(MegaManXSNESRecomp "${MMX_GEN_DIR}"

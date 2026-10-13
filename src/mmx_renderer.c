@@ -60,6 +60,7 @@ static MmxCoopState frame_coop;
 static bool frame_held;
 static int peer_seat=-1,view_dx,view_dy;
 void MmxRendererSetPeerView(int seat) { peer_seat=seat>=0 && seat<2?seat:-1; }
+int MmxRendererGetPeerView(void) { return peer_seat; }
 static int view_camera(const uint8_t *r,unsigned address) {
   return (int)(r[address]|r[address+1]<<8)+(address==0x1e4d?view_dx:view_dy);
 }

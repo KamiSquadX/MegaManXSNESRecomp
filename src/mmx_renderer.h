@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 void MmxRendererSetPeerView(int seat);
+int MmxRendererGetPeerView(void);
 #include "snes/ppu.h"
 #include "mmx_display.h"
 #include "mmx_coop.h"

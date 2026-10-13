@@ -23,6 +23,8 @@
 #include "mmx_startup.h"
 #include "mmx_coop_trace.h"
 #include "mmx_coop_view.h"
+#include "mmx_replay.h"
+#include "desktop/sdl_compat.h"
 #include "netplay/snes_netplay.h"
 #include "host_paths.h"
 #include <ctype.h>
@@ -58,6 +60,7 @@ static void MmxPrepareFrame(int dw, int dh, int *w, int *h) {
         aspect, &pw, &ph);
     g_mmx_custom_view = (MmxRenderView){256, 0, (double)pw / ph};
   }
+  MmxReplayViewport(&g_mmx_custom_view.width,&g_mmx_custom_view.extra);
   *w = g_mmx_custom_renderer ? g_mmx_custom_view.width : 256;
   *h = 224;
 }
@@ -71,12 +74,14 @@ bool MmxDisplay_IsWidescreenActive(void) {
 int MmxDisplay_GetCurrentFrameWidth(void) { return snesrecomp_desktop_frame_width(); }
 
 static void MmxBeforeFrame(void) {
+  if(!MmxReplayPlaying()) {
 #if SNESRECOMP_NET
   MmxCoopViewsSetOnline(snes_netplay_active() && MmxCoopEnabled() && MmxCoopViewsIndependent());
   MmxRendererSetPeerView(MmxCoopViewsOnline()?snes_netplay_local_slot():-1);
 #else
   MmxCoopViewsSetOnline(false);MmxRendererSetPeerView(-1);
 #endif
+  }
   /* MMX's draw hook runs the original per-line HDMA sequence itself. */
   snes_set_hdma_beam_enabled(g_snes, false);
   if (g_snes->cart) {
@@ -181,6 +186,9 @@ static void MmxAfterConfig(void) {
   }
 }
 static void MmxAfterFrame(const SnesDesktopHostFrameStats *stats) {
+  if (MmxReplayPlaying() && (MmxReplayFinished() || MmxReplayFailed())) {
+    SDL_Event quit = {0}; quit.type = SDL_QUIT; SDL_PushEvent(&quit);
+  }
   /* Netplay resimulates frames and must never pause for disk writes. */
   MmxCoopTraceAfterFrame(!MmxNetplayActive());
   if (s_benchmark_frames && stats->frame == (unsigned)s_benchmark_frames) {
@@ -230,6 +238,14 @@ static void MmxConfigureCoopTrace(int *argc, char **argv) {
 
 int MMX_DESKTOP_ENTRY(int argc, char **argv) {
   MmxStartupLogging();
+  for(int arg=1;arg+1<argc;++arg)
+    if(!strcmp(argv[arg],"--config")) MmxReplaySetConfigPath(argv[arg+1]);
+  for (int arg = 1; arg < argc; ++arg) {
+    if (strcmp(argv[arg], "--replay-diagnostic")) continue;
+    if (arg + 1 == argc || !MmxReplayPlayback(argv[arg + 1])) return 2;
+    for (int i = arg; i + 2 <= argc; ++i) argv[i] = argv[i + 2];
+    argc -= 2; break;
+  }
   MmxConfigureCoopTrace(&argc, argv);
   ConfigUseStateMenuDefaults();
   for (int arg = 1; arg + 1 < argc; ++arg) {
@@ -290,5 +306,7 @@ int MMX_DESKTOP_ENTRY(int argc, char **argv) {
     .prepare_netplay = MmxNetplayPrepare,
     .netplay_ready = MmxNetplayReady,
   };
-  return snesrecomp_desktop_main(&game, argc, argv);
+  int result = snesrecomp_desktop_main(&game, argc, argv);
+  MmxReplayClose();
+  return MmxReplayPlaying() && (MmxReplayFailed() || !MmxReplayFinished()) ? 2 : result;
 }

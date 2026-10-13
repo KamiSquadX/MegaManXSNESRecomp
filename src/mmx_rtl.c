@@ -7,6 +7,7 @@
 #include "mmx_coop.h"
 #include "mmx_knc_bugfix.h"
 #include "mmx_coop_trace.h"
+#include "mmx_replay.h"
 #include "mmx_coop_view.h"
 #include "variables.h"
 #include "common_cpu_infra.h"
@@ -550,6 +551,7 @@ void MmxStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
 static bool s_ws_recover_armor;
 static int MmxWsMargin(void);
 void MmxOnStateLoaded(uint32_t version) {
+  MmxReplayStateLoaded();
   MmxRendererReset();
   MmxKncBugfixSetState(g_load_knc_bugfix);
   s_ws_recover_armor = g_mmx_custom_renderer && MmxWidePolicy_PrematureRideArmor(g_ram);

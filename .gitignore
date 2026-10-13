@@ -99,6 +99,11 @@ variants/*/gen/
 
 # Root-level runtime/debug artifacts from local launches.
 /keybinds.ini
+/logs/
+*.replay.sav
+*.replay.config.ini
+*.replay.mods.toml
+*.replay.mods.txt
 /mmxb*.txt
 
 # Ghidra databases are local, regenerable build artifacts. Track only the
