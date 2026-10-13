@@ -9,7 +9,9 @@
 #include "mmx_source_assets.h"
 #include "mmx_coop.h"
 #include "mmx_coop_view.h"
+#if !MMX_VARIANT_JP
 #include "saber/mmx_saber_plugin.h"
+#endif
 #include "sdl_compat.h"
 #include <stdio.h>
 #include <string.h>
@@ -233,7 +235,9 @@ static void activate(void) {
     fprintf(stderr, "[mmx-zero] Cannot load extracted Zero assets: %s\n", path); return;
   }
   MmxZeroRegisterHooks();
+#if !MMX_VARIANT_JP
   if (!strcmp(behavior,"saber")) MmxSaberActivate("megaman-x.character.zero","zero",false);
+#endif
   fprintf(stderr, "[mmx-zero] Zero 0.0.1 enabled; starting as %s\n", strcmp(start,"zero") ? "X" : "Zero");
 }
 static void activate_coop(void) {
@@ -252,7 +256,9 @@ static void activate_coop(void) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Cannot enable co-op","Cannot initialize the selected characters.",NULL);
     return;
   }
+#if !MMX_VARIANT_JP
   if(!strcmp(behavior,"saber")) MmxSaberActivate("megaman-x.coop","coop",true);
+#endif
   fprintf(stderr,"[mmx-coop] Co-op enabled; P1 is %s\n",p1==MMX_COOP_X?"X":"Zero");
 }
 static void activate_weapons(unsigned game) {
