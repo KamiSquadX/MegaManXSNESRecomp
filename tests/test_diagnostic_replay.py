@@ -29,7 +29,8 @@ def check_saber(args, work, env):
         "wait 600\npress right+p2:right+y+p2:y 90\nwait 20\npress b+p2:b 10\n"
         "wait 30\npress x+p2:x 15\nwait 200\nquit\n")
     current = env | {"SDL_VIDEODRIVER": "dummy", "SDL_AUDIODRIVER": "dummy",
-                     "MMX_REPLAY_RECORD": "1", "MMX_REPLAY_DIR": str(folder)}
+                     "MMX_REPLAY_DIR": str(folder)}
+    current.pop("MMX_REPLAY_RECORD", None)  # Exercise the player default.
     with (folder / "record.log").open("wb") as log:
         result = subprocess.run([str(game), "--rom", str(rom), "--config", str(folder / "config.ini"),
                                  "--no-launcher", "--script", str(folder / "route.script"),
@@ -69,6 +70,9 @@ def main():
         if key.startswith(("MMX_", "SNESRECOMP_RUN", "SNES_NET_")):
             del env[key]
     env["MMX_ZERO_TEST_ASSETS"] = str(args.assets.resolve())
+    # The state harness explicitly switches recording on/off to compare the
+    # complete machine with an unrecorded control. Keep that control unrecorded.
+    env["MMX_REPLAY_RECORD"] = "0"
     command = [str(args.state_tests.resolve()), str(args.rom.resolve())]
 
     def run(label, settings, good=True, contains=None):

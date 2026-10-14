@@ -159,10 +159,10 @@ For netplay connection problems, enable the **Tier 2 diagnostics** mod
 through STUN or through TURN, and any stalls); attach it with the log. The
 file is replaced by the next match.
 
-For intermittent co-op collision problems, tick **Co-op physics diagnostics**
-under **Mods > Developer** before playing. This also records a replay: both
-players' inputs, machine checkpoints, display settings and per-frame state
-checks. When the problem occurs, stop playing and zip the session's
+Replay diagnostics are **enabled by default**, including when updating an
+existing installation. Normal play records both players' inputs, machine
+checkpoints, display settings and per-frame state checks. No Developer mod
+needs to be enabled. When a problem occurs, stop playing and zip the session's
 `logs/mmx-replay-*` files together, including **all `.replay`, `.replay.sav`,
 `.config.ini`, `.mods.toml` and `.mods.txt` files**. A `.replay` alone is insufficient.
 During netplay, collect the files from both players if possible. Describe what
@@ -171,8 +171,13 @@ happened and roughly when. Keep your source ROMs out of the attachment.
 The newest six replay segments are kept (normally about a minute of gameplay;
 rollback or frequent state loads can shorten this). Each segment is capped at
 600 frame executions or 16 MiB of checkpoints. Run-ahead currently suspends
-replay capture; turn it off while collecting a report. **Tier 2 diagnostics**
-also enables replay capture. Both diagnostic options are off by default.
+replay capture; turn it off while collecting a report. To opt out of automatic
+recording, set the environment variable `MMX_REPLAY_RECORD=0` and leave the
+Developer diagnostic options disabled.
+
+For extra detail, enable **Co-op physics diagnostics** or **Tier 2 diagnostics**
+under **Mods > Developer**. These optional detailed traces remain off by default;
+the rolling replay capture runs without them.
 
 The existing collision trace is written in 32 MiB
 numbered segments (`logs/coop-physics-<start time>-<pid>-<n>-001.csv`, `-002.csv`,
