@@ -76,6 +76,16 @@ void MmxBossRushVisualFade(unsigned owner,uint32_t generation,
     visual.colors[owner][c]=(uint16_t)color;
   }
 }
+void MmxBossRushVisualRotate(unsigned owner,uint32_t generation,const uint16_t target[16]) {
+  if(owner>=2 || !target) return;
+  if(!visual.initialized[owner] || visual.generation[owner]!=generation) {
+    memcpy(visual.colors[owner],target,sizeof(visual.colors[owner]));
+    visual.generation[owner]=generation;visual.initialized[owner]=1;
+  }
+  uint16_t last=visual.colors[owner][15];
+  memmove(visual.colors[owner]+2,visual.colors[owner]+1,14*sizeof(uint16_t));
+  visual.colors[owner][1]=last;
+}
 bool MmxBossRushActive(void) {return state.mode!=MMX_RUSH_OFF;}
 bool MmxBossRushCoop(void) {return state.mode==MMX_RUSH_OFF || state.coop!=0;}
 MmxBossRushState MmxBossRushGetState(void) {return state;}

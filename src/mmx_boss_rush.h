@@ -47,6 +47,9 @@ bool MmxBossRushVisualSetState(const MmxBossRushVisualState *state);
 /* direction: 0 initializes black, +1 restores colors, -1 fades to black. */
 void MmxBossRushVisualFade(unsigned owner, uint32_t generation,
     const uint16_t target[16], int direction);
+/* Rotate colors 1..15 forward by one (15 wraps to 1), as Tunnel Rhino's
+ * drill charge does to its OBJ palette; initialized from target. */
+void MmxBossRushVisualRotate(unsigned owner,uint32_t generation,const uint16_t target[16]);
 /* The legacy queue in MmxBossRushState only holds X1 ids. Runs started by
  * this build shuffle this roster instead; the legacy fields stay zero so the
  * original Rush ABI, snapshots and render captures remain readable. The

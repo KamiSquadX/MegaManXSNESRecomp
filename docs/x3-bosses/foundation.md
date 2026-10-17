@@ -226,13 +226,32 @@ cues: Mega Man ZX weak-point graphic, sound and red health-bar flash
 together, only the ZX sound, only the ZX graphic, or the enemy flashing red
 instead of white.
 
+**Pinning (done).** X1 uses X3's player-state numbers: hurt `$0E`, death
+`$0C` and the scripted lock `$1E` (X1's entrance lock `$84:9FEB` sets `$1E`,
+`$84:A003` releases). X3's lock/release (`$04:D1CA`/`$D1EF`) become shims:
+lock a living player through `$84:9FEB`, release through `$84:A003` only
+while the player is still in `$1E`; Rush already skips that lock during a
+boss's entrance. X3's "caught" state `$12` has no X1 counterpart; the drill
+hit leaves X1's player hurt, so the pin test compares `$0E`. Together with
+the relocated carrier, which drags X, his drill charge catches, carries,
+locks and releases X as in X3. Caveat: any hurt state during his drill
+recoil (not only his drill) counts as caught. `$74` (player state, also
+tested by X3 contact code) is unidentified and kept.
+
+**Drill-charge palette (done).** His X3 helpers (`$33:F7D6` rotate colors
+1-15, `$33:F7FC` fade back) are hooked and run on the seat's private
+colors (`MmxBossRushVisualRotate` / `MmxBossRushVisualFade`, the state
+Chameleon's camouflage already snapshots); the fade returns carry while
+colors still differ, and the renderer draws foreign bodies and their
+projectiles with those colors.
+
+**Frame counters (verified).** X3 increments `$09CB` at one NMI site and
+`$09CC` at six scene-loop sites; X1 does the same with `$0B9B` and `$0B9C`,
+so the `+$1D0` mapping holds.
+
 **Not done** (why he is preview-only, `MMX_BOSS_RUSH_PREVIEW=1`):
 
 - Extra X1/X2 weaknesses (assigned once all 24 bosses exist; see below).
-- Pinning: X3 player-state values (`$12`, `$1E`, `$74`) are compared against
-  X1 states, so the drill-charge pin never triggers.
-- Palette effects (drill-charge flashing) are sunk.
-- `$09CB`/`$09CC` frame-counter mapping (`+$1D0`) is unverified.
 - Netplay with relocated bodies is untested; preview is a local setting and
   must not differ between peers.
 

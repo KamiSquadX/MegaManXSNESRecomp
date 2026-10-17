@@ -101,6 +101,65 @@ static void rush_rhino_weakness_checks(uint8_t *snapshot,size_t size,unsigned ob
   check(acid.profile==5,"Rhino's weakness flinch is invulnerable");
   check(!deflect.damage,"his drill-charge row deflects shots");
 }
+/* Start Rhino's drill charge (behavior 2) at X and follow the pin and his
+ * private palette: the carrier catches X, X is locked in $1E during his
+ * recoil and released after landing; colors rotate, then fade back. */
+static void rush_rhino_pin_palette_checks(uint8_t *snapshot,size_t size,unsigned object) {
+  check(RtlLoadSnapshotFromMemory(snapshot,size),"Rhino drill-charge case restores combat");
+  MmxBossRushState s=MmxBossRushGetState();unsigned seat=1,penguin=s.bosses[0].object;
+  const uint16_t *base=MmxBossRushForeignColors(23);check(base!=NULL,"Rhino's base palette is available");
+  unsigned rx=s.camera_x+200,px=s.camera_x+120,floor_y=g_ram[object+8]|g_ram[object+9]<<8;
+  g_ram[object+5]=(uint8_t)rx;g_ram[object+6]=(uint8_t)(rx>>8);
+  g_ram[object+2]=2;g_ram[object+3]=0;g_ram[object+0x36]=0;
+  g_ram[0xbad]=(uint8_t)px;g_ram[0xbae]=(uint8_t)(px>>8);
+  g_ram[0xbb0]=(uint8_t)floor_y;g_ram[0xbb1]=(uint8_t)(floor_y>>8);
+  g_ram[0xbaa]=g_ram[0xbab]=0;
+  /* Ordinary health (no keep-alive refill) so the drill hit really hurts X. */
+  g_ram[0xbcf]=0x1c;g_ram[0xc30]=g_ram[0xc31]=g_ram[0xc32]=g_ram[0xc33]=0;
+  bool carrier=false,locked=false,rotated=false,dragged=false;unsigned lock_frame=0,release_frame=0;
+  unsigned start_x=px;
+  for(unsigned t=0;t<420;++t) {
+    g_ram[penguin+5]=(uint8_t)(s.camera_x-128);g_ram[penguin+6]=(uint8_t)((s.camera_x-128)>>8);
+    frame(0);
+    if((g_ram[0xbcf]&127)<8) g_ram[0xbcf]=(uint8_t)((g_ram[0xbcf]&0x80)|0x1c);
+    for(unsigned d=0x1428;d<0x1628;d+=64)
+      if(g_ram[d] && g_ram[d+10]==0x26 && g_ram[d+0x3c]==2 && MmxBossRushOwner(d)==(int)seat) carrier=true;
+    unsigned x=g_ram[0xbad]|g_ram[0xbae]<<8;
+    if(carrier && (x>start_x+12 || x+12<start_x)) dragged=true;
+    if(g_ram[0xbaa]==0x1e && !locked) {locked=true;lock_frame=t;}
+    if(locked && !release_frame && g_ram[0xbaa]!=0x1e) release_frame=t;
+    MmxBossRushVisualState v=MmxBossRushVisualGetState();
+    if(v.initialized[seat] && memcmp(v.colors[seat],base,sizeof(v.colors[seat]))) rotated=true;
+    if(t<160 || t%30==0) fprintf(stderr,"pin t=%u rhino=%02x/%02x/%02x x=%04x player=%02x/%02x px=%04x carrier=%u hp=%02x guard=%02x/%02x/%02x contact=%u\n",
+        t,g_ram[object+1],g_ram[object+2],g_ram[object+3],g_ram[object+5]|g_ram[object+6]<<8,
+        g_ram[0xbaa],g_ram[0xbab],x,carrier,g_ram[0xbcf],g_ram[0x1f0c],g_ram[0xc30],g_ram[0xc32],g_ram[object+0x26]);
+    if(release_frame && t>release_frame+90 && g_ram[object+2]!=2 && g_ram[object+2]!=10) break;
+  }
+  MmxBossRushVisualState v=MmxBossRushVisualGetState();
+  bool restored=!v.initialized[seat] || !memcmp(v.colors[seat],base,sizeof(v.colors[seat]));
+  fprintf(stderr,"rhino pin: carrier=%u dragged=%u locked=%u@%u released@%u rotated=%u restored=%u\n",
+      carrier,dragged,locked,lock_frame,release_frame,rotated,restored);
+  check(carrier && dragged,"Rhino's drill charge catches X and carries him");
+  check(rotated,"his drill charge cycles his private palette");
+  check(restored,"his palette fades back to his original colors");
+  /* The pin itself: during his drill recoil (behavior 2, step 6) a player
+   * left hurt by the drill ($0E, X3's caught $12) is locked in X1's
+   * scripted state $1E, then released once on the ground. */
+  check(RtlLoadSnapshotFromMemory(snapshot,size),"Rhino pin case restores combat");
+  g_ram[object+2]=2;g_ram[object+3]=6;g_ram[object+0x39]=60;g_ram[object+0x36]=0;
+  g_ram[0xbaa]=0x0e;g_ram[0xbab]=0;
+  locked=false;lock_frame=release_frame=0;
+  for(unsigned t=0;t<240 && !release_frame;++t) {
+    g_ram[penguin+5]=(uint8_t)(s.camera_x-128);g_ram[penguin+6]=(uint8_t)((s.camera_x-128)>>8);
+    frame(0);rush_keep_players_alive();
+    if(g_ram[0xbaa]==0x1e && !locked) {locked=true;lock_frame=t;}
+    if(locked && g_ram[0xbaa]!=0x1e) release_frame=t;
+  }
+  fprintf(stderr,"rhino pin lock=%u@%u release@%u rhino=%02x/%02x/%02x\n",locked,lock_frame,release_frame,
+      g_ram[object+1],g_ram[object+2],g_ram[object+3]);
+  check(locked && lock_frame<3,"a hurt player is pinned by his drill recoil");
+  check(release_frame>lock_frame,"the pinned player is released after landing");
+}
 /* Tunnel Rhino's original X3 code, relocated from the user's ROM, fights in
  * seat 1 beside a native Penguin. MMX_BOSS_RUSH_X3_ROM names the X3 ROM. */
 static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
@@ -226,6 +285,7 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
   check(RtlLoadSnapshotFromMemory(start,n),"Rhino seat snapshot restores");
   for(unsigned t=0;t<60;++t) {frame(0);rush_keep_players_alive();}
   check(!memcmp(first,g_ram,sizeof(first)),"Rhino replay is deterministic");
+  rush_rhino_pin_palette_checks(start,n,object);
   rush_rhino_weakness_checks(start,n,object,x3);
   check(RtlLoadSnapshotFromMemory(start,n),"Rhino seat snapshot restores for defeat");
   unsigned defeated=MmxBossRushGetState().defeated;

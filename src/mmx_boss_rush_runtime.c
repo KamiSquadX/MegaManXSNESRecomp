@@ -1,5 +1,6 @@
 #include "mmx_boss_rush.h"
 #include "mmx_boss_rush_foreign.h"
+#include "mmx_boss_rush_foreign_art.h"
 #include "mmx_boss_rush_audio.h"
 #include "mmx_boss_rush_score.h"
 #include "host_paths.h"
@@ -357,6 +358,25 @@ static void foreign_weakness_hook(CpuState *cpu,uint32_t pc) {
   cpu->_flag_Z=!value;cpu->_flag_N=0;
   cpu->P=(cpu->P&~0x82u)|(cpu->_flag_Z?2:0);
 }
+/* Relocated palette helpers write the shared OBJ palette. Run them on the
+ * seat's private colors instead and return through their own RTL (+3,
+ * after `JSR body; RTL`). The fade reports carry while still changing. */
+static void foreign_palette_hook(CpuState *cpu,uint32_t pc) {
+  if(!playing()) return;
+  int owner=MmxBossRushOwner(cpu->D);if(owner<0) return;
+  MmxBossRushBoss b=MmxBossRushGetState().bosses[owner];
+  if(!b.phase || MmxBossRushNative(b.id)) return;
+  const uint16_t *base=MmxBossRushForeignColors(b.id);if(!base) return;
+  uint32_t rotate,fade;MmxBossRushForeignPaletteHooks(&rotate,&fade);
+  if((pc&0x7fffff)==(rotate&0x7fffff)) MmxBossRushVisualRotate((unsigned)owner,b.generation,base);
+  else {
+    MmxBossRushVisualFade((unsigned)owner,b.generation,base,1);
+    MmxBossRushVisualState v=MmxBossRushVisualGetState();
+    bool busy=memcmp(v.colors[owner],base,sizeof(v.colors[owner]))!=0;
+    cpu->_flag_C=busy;cpu->P=(cpu->P&~1u)|(busy?1:0);
+  }
+  interp_bridge_pre_opcode_redirect((pc&0xff0000)|((pc+3)&0xffff));
+}
 void MmxBossRushHostFrame(void) {
 #if !MMX_VARIANT_JP
   MmxBossRushForeignSync();
@@ -391,6 +411,9 @@ void MmxBossRushHostFrame(void) {
   const unsigned weakness_pcs[]={0x049e1d,0x849e1d,0x049e3a,0x849e3a};
   for(unsigned i=0;i<sizeof(weakness_pcs)/sizeof(*weakness_pcs);++i)
     registered&=interp_bridge_add_pre_opcode_hook(weakness_pcs[i],foreign_weakness_hook);
+  uint32_t rotate,fade;MmxBossRushForeignPaletteHooks(&rotate,&fade);
+  if(rotate) registered&=interp_bridge_add_pre_opcode_hook(rotate,foreign_palette_hook);
+  if(fade) registered&=interp_bridge_add_pre_opcode_hook(fade,foreign_palette_hook);
   uint32_t plain,positional;MmxBossRushForeignSoundShims(&plain,&positional);
   if(plain) registered&=interp_bridge_add_pre_opcode_hook(plain,foreign_sound_hook);
   if(positional) registered&=interp_bridge_add_pre_opcode_hook(positional,foreign_sound_hook);

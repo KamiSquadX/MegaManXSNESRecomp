@@ -29,6 +29,7 @@ typedef struct MmxRelocBoss {
   unsigned sound_bank;uint32_t sfx,sfx_pan;
   const uint8_t *effects;size_t effect_count;
   const MmxBossRushWeakness *weaknesses;size_t weakness_count;
+  uint32_t palette_rotate,palette_fade; /* relocated helpers Rush runs privately */
 } MmxRelocBoss;
 #define COUNT(a) (sizeof(a)/sizeof(*(a)))
 /* X1 shot classes: Homing Torpedo $0E, Shotgun Ice $07; charged +9. */
@@ -48,7 +49,9 @@ static const MmxRelocBoss kBosses[]={
    k_rhino_shim_code,k_rhino_blobs,COUNT(k_rhino_blobs),
    k_rhino_patches,COUNT(k_rhino_patches),k_rhino_children,COUNT(k_rhino_children),
    k_rhino_sound_bank,k_rhino_sfx,k_rhino_sfx_pan,k_rhino_effects,COUNT(k_rhino_effects),
-   k_rhino_weaknesses,COUNT(k_rhino_weaknesses)},
+   k_rhino_weaknesses,COUNT(k_rhino_weaknesses),
+   /* X3 $13:F7D6 rotates OBJ colors 1-15; $13:F7FC fades them back. */
+   0x33f7d6,0x33f7fc},
 };
 /* Zero/sink area for X3-only globals: reads see zero, writes hit ROM. */
 enum { ZERO_AREA=0x86fe00, ZERO_SIZE=0x200 };
@@ -111,12 +114,13 @@ static bool build(const MmxRelocBoss *boss,const uint8_t *rom,size_t size,char *
     snprintf(error,cap,"%s: cannot register its weaknesses",boss->name);return false;
   }
   MmxBossRushForeignSetSoundShims(boss->sfx,boss->sfx_pan);
+  MmxBossRushForeignSetPaletteHooks(boss->palette_rotate,boss->palette_fade);
   MmxBossRushAudioPrepareForeign(boss->roster_id,rom,size,boss->sound_bank,boss->effects,(unsigned)boss->effect_count);
   return true;
 }
 bool MmxBossRushForeignBuild(char *error,size_t cap) {
   for(size_t i=0;i<COUNT(kBosses);++i) MmxBossRushForeignSetController(kBosses[i].roster_id,0);
-  MmxBossRushForeignSetSoundShims(0,0);
+  MmxBossRushForeignSetSoundShims(0,0);MmxBossRushForeignSetPaletteHooks(0,0);
   MmxCartExtensionClear();
   if(!MmxCartPatchAvailable()) {
     snprintf(error,cap,"The loaded Mega Man X image cannot host relocated bosses.");return false;

@@ -105,6 +105,14 @@ const MmxBossRushWeakness *MmxBossRushForeignWeakness(unsigned id,unsigned page,
     if(weaknesses[id][i].page==page && weaknesses[id][i].weapon==weapon) return &weaknesses[id][i];
   return NULL;
 }
+static uint32_t palette_hooks[2];
+void MmxBossRushForeignSetPaletteHooks(uint32_t rotate,uint32_t fade) {
+  palette_hooks[0]=rotate;palette_hooks[1]=fade;
+}
+void MmxBossRushForeignPaletteHooks(uint32_t *rotate,uint32_t *fade) {
+  if(rotate) *rotate=palette_hooks[0];
+  if(fade) *fade=palette_hooks[1];
+}
 static uint32_t sound_shims[2];
 void MmxBossRushForeignSetSoundShims(uint32_t plain,uint32_t positional) {
   sound_shims[0]=plain;sound_shims[1]=positional;

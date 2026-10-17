@@ -1986,6 +1986,11 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       if(MmxBossRushNative(id)) continue;
       const MmxForeignPose *pose=MmxBossRushForeignPose(id,frame.ram[d+0x16],frame.ram[d+0x17]&0x7f);
       const uint16_t *colors=MmxBossRushForeignColors(id);
+      /* Private palette effects (Rhino's drill-charge rotation and fade). */
+      unsigned seat=owner-1;
+      if(colors && frame_rush_visual.initialized[seat] &&
+          frame_rush_visual.generation[seat]==frame_rush.bosses[seat].generation)
+        colors=frame_rush_visual.colors[seat];
       if(!pose || !colors) continue;
       unsigned attributes=frame.ram[d+0x11];
       foreign[foreign_count++]=(ForeignSprite){pose,colors,

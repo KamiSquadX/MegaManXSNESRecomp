@@ -37,6 +37,10 @@ typedef struct MmxBossRushWeakness {
 } MmxBossRushWeakness;
 bool MmxBossRushForeignSetWeaknesses(unsigned id,const MmxBossRushWeakness *rules,unsigned count);
 const MmxBossRushWeakness *MmxBossRushForeignWeakness(unsigned id,unsigned page,unsigned weapon);
+/* Relocated palette helpers Rush runs privately per seat: one rotates the
+ * body's colors, the other fades them back (carry set while unfinished). */
+void MmxBossRushForeignSetPaletteHooks(uint32_t rotate,uint32_t fade);
+void MmxBossRushForeignPaletteHooks(uint32_t *rotate,uint32_t *fade);
 /* Rebuild every relocated body for the loaded source ROMs into the cart's
  * patch windows (mmx_boss_rush_relocate.c). Restores the cart first. */
 bool MmxBossRushForeignBuild(char *error,size_t error_size);

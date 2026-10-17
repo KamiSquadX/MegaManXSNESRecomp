@@ -54,8 +54,8 @@ SHIMS = {
     0x00b1dc: 'rtl',     # Doppler refight graphics
     0x018000: 'sfxpan',  # positional sound effect (hooked: cached boss clip)
     0x01802b: 'sfx',     # sound effect (hooked: cached boss clip)
-    0x04d1ca: 'rtl',     # lock player for the intro / pin
-    0x04d1ef: 'rtl',     # release player
+    0x04d1ca: 'lock',    # lock player (X1 $84:9FEB; Rush skips it during entrances)
+    0x04d1ef: 'release', # release a locked player (X1 $84:A003)
     0x04d580: 'rtl',     # screen shake
     0x02df8a: 'rtl',     # dust effect
     0x02e0ba: 'rtl',     # stock boss explosion (Rush draws its own)
@@ -78,6 +78,11 @@ RAM = {0x09cb: 0x0b9b, 0x09cc: 0x0b9c, 0x09da: 0x0baa, 0x09dd: 0x0bad, 0x09e0: 0
 ZERO = {0x0040, 0x00a1, 0x0a43, 0x1f18, 0x1f36, 0x1f54, 0x1f55, 0x1f56, 0x1f57,
         0x1fae, 0x1fca, 0x1fda, 0x1fe0, 0x049e, 0x0480, 0x0482, 0x0484, 0x04a0}
 ZERO_LONG = {0x001f39, 0x7fcac0}
+# Player states compared after LDA $09DA (X1 $0BAA). Hurt $0E, death $0C
+# and the scripted lock $1E match X1. X3's caught state $12 has no X1
+# counterpart; a drill hit leaves X1's player hurt ($0E) instead. $74 is
+# unidentified in both games and kept.
+PLAYER_STATES = {0x0c: 0x0c, 0x0e: 0x0e, 0x12: 0x0e, 0x1e: 0x1e, 0x74: 0x74}
 # 16-bit immediates that are RAM object pointers.
 IMMEDIATE = {0x09d8: 0x0ba8}
 
@@ -123,6 +128,17 @@ def shim_code(kind, init):
         return [0x18, 0x6b]
     if kind == 'combat':
         return [0x08, 0xe2, 0x20, 0xa9, 0x02, 0x85, 0x01, 0x28, 0x6b]
+    if kind == 'lock':
+        # X3 $04:D1CA locks a living player into state $1E; X1's entrance
+        # lock sets the same state. PHP; SEP #$20; LDA $0BCF; AND #$7F;
+        # BEQ +4; JSL $84:9FEB; PLP; RTL
+        return [0x08, 0xe2, 0x20, 0xad, 0xcf, 0x0b, 0x29, 0x7f, 0xf0, 0x04,
+                0x22, 0xeb, 0x9f, 0x84, 0x28, 0x6b]
+    if kind == 'release':
+        # X3 $04:D1EF releases only a player still locked in $1E.
+        # PHP; SEP #$20; LDA $0BAA; CMP #$1E; BNE +4; JSL $84:A003; PLP; RTL
+        return [0x08, 0xe2, 0x20, 0xad, 0xaa, 0x0b, 0xc9, 0x1e, 0xd0, 0x04,
+                0x22, 0x03, 0xa0, 0x84, 0x28, 0x6b]
     if kind == 'delete':
         return [0x08, 0xe2, 0x20, 0x64, 0x00, 0x28, 0x6b]
     if kind == 'init':
@@ -233,6 +249,15 @@ def build(rom, boss):
                 pass  # direct-page-style scratch shared by both engines
             elif v in RAM:
                 patch(2, RAM[v])
+                if v == 0x09da:
+                    # Player-state test: CMP #state right after the load.
+                    at = (a & 0xff0000) | ((a + insn.size) & 0xffff)
+                    cmp = seen.get(at)
+                    if cmp and cmp.name == 'CMP' and cmp.size == 2:
+                        if cmp.value not in PLAYER_STATES:
+                            errors.append(f'${at:06X}: player state ${cmp.value:02X} unmapped')
+                        elif PLAYER_STATES[cmp.value] != cmp.value:
+                            patches.append((bank_map(at) + 1, 1, cmp.value, PLAYER_STATES[cmp.value]))
                 if v == 0x1f2f:
                     # Weakness test: the CMP chain after this load names the
                     # X3 weakness shot classes; use X1 reaction classes.
