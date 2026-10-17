@@ -92,10 +92,17 @@ uint32_t MmxBossRushForeignOffered(void) {
   if(MmxBossRushForeignReady(3)) mask|=ready&MMX_RUSH_X3_MASK;
   return mask;
 }
+static uint32_t sound_shims[2];
+void MmxBossRushForeignSetSoundShims(uint32_t plain,uint32_t positional) {
+  sound_shims[0]=plain;sound_shims[1]=positional;
+}
+void MmxBossRushForeignSoundShims(uint32_t *plain,uint32_t *positional) {
+  if(plain) *plain=sound_shims[0];
+  if(positional) *positional=sound_shims[1];
+}
 void MmxBossRushForeignSync(void) {
   if(!dirty || !MmxCartPatchAvailable()) return;
   dirty=false;
-  if(!MmxBossRushForeignReady(2) && !MmxBossRushForeignReady(3)) {MmxCartExtensionClear();return;}
   char error[256];
   if(!MmxBossRushForeignBuild(error,sizeof(error)))
     fprintf(stderr,"[mmx-rush] %s; those Mavericks stay out of Boss Rush\n",error);

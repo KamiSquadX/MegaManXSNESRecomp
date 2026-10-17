@@ -175,10 +175,24 @@ compiled body, so `tools/apply_boss_rush_hooks.py` now routes it through the
 interpreter during Rush; without that, X1's own projectile class `$26` ran
 his drills.
 
+**Sound (done).** X3's SPC driver uses X1's upload table format
+(`$09:8000`, `[length, destination, data]` blocks) and boot protocol, so
+the isolated Rush SPC renderer loads X3 banks 0-2 plus the boss's own bank
+(`$5D`: 10 bytes at `$1952`, 586 at `$3400`) and pre-renders his effects
+when the pack builds. The relocation tool finds the bank from his
+`LDA #$5D; JSL $00:850F` and his effects from every `LDA #fx` before
+`$01:802B`/`$01:8000`: `$15` meter fill, `$21` weakness hit, `$49` wall
+crash, `$70` spread, `$72` mid-charge stop, `$73` drill grind. Those two
+calls become separate shims (`$86:FABE` plain, `$86:FABF` positional) that
+the runtime hooks to queue his cached clip; the positional one pans by
+half his distance from the player, as X3's routine does. Cues keep the
+existing snapshot layout and name the roster id in their spare field.
+X1's `$1C00` signature and `$C3` activity byte are not used for X3; an X3
+clip ends after 4,096 silent samples. `MMX_BOSS_RUSH_RHINO_WAV=1` writes
+private listening copies of the rendered clips.
+
 **Not done** (why he is preview-only, `MMX_BOSS_RUSH_PREVIEW=1`):
 
-- Sound: all effects are shimmed silent; bank `$5D` needs the isolated SPC
-  path.
 - Weaknesses: profile `$18` currently indexes X1's damage table; his
   Acid Burst flinch (`$1F2F`) is disabled.
 - Pinning: X3 player-state values (`$12`, `$1E`, `$74`) are compared against
@@ -194,7 +208,8 @@ his drills.
   boss class byte `$02`, so class-indexed native tables stay in range).
 - Private art for foreign bodies: done for relocated bodies (pose-level;
   bosses whose source art streams per-pose DMA will need that path).
-- Foreign sound effects through the isolated SPC renderer, using the source
-  game's boss sound bank.
+- Foreign sound effects: done for relocated X3 bodies (X2's driver still
+  needs checking). The shared `$86` shim and table area is laid out per
+  boss today; a second relocated boss needs its own region.
 - Weakness rows for foreign bodies in `src/mmx_weapon_weakness.inc`
   covering X1, X2 and X3 weapons.

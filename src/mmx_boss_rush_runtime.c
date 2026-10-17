@@ -320,6 +320,24 @@ static void foreign_projectile_hook(CpuState *cpu,uint32_t pc) {
   stack_push(cpu,pc>>16,1);stack_push(cpu,MMX_RUSH_STUB_RTS-1,2);
   interp_bridge_pre_opcode_redirect(controller);
 }
+/* Relocated bodies call shims in place of their source game's sound-effect
+ * routines; A holds the effect. Queue that boss's cached clip. X3's
+ * positional variant ($01:8000) pans by half the emitter's distance from
+ * the player, clamped to the driver's signed range. */
+static void foreign_sound_hook(CpuState *cpu,uint32_t pc) {
+  if(!playing()) return;
+  int owner=MmxBossRushOwner(cpu->D);if(owner<0) return;
+  MmxBossRushBoss b=MmxBossRushGetState().bosses[owner];
+  if(!b.phase || MmxBossRushNative(b.id)) return;
+  uint32_t plain,positional;MmxBossRushForeignSoundShims(&plain,&positional);
+  int pan=0;
+  if((pc&0x7fffff)==(positional&0x7fffff)) {
+    pan=((int)word(g_ram+cpu->D+5)-(int)word(g_ram+0xbad))/2;
+    if(pan<-127) pan=-127;
+    if(pan>127) pan=127;
+  }
+  MmxBossRushAudioQueueForeign((unsigned)owner,cpu->D,b.id,cpu->A&255,(uint8_t)pan,b.generation);
+}
 void MmxBossRushHostFrame(void) {
 #if !MMX_VARIANT_JP
   MmxBossRushForeignSync();
@@ -351,6 +369,9 @@ void MmxBossRushHostFrame(void) {
   registered&=interp_bridge_add_pre_opcode_hook(0x80d544,foreign_dispatch_hook);
   registered&=interp_bridge_add_pre_opcode_hook(0x00d4e7,foreign_projectile_hook);
   registered&=interp_bridge_add_pre_opcode_hook(0x80d4e7,foreign_projectile_hook);
+  uint32_t plain,positional;MmxBossRushForeignSoundShims(&plain,&positional);
+  if(plain) registered&=interp_bridge_add_pre_opcode_hook(plain,foreign_sound_hook);
+  if(positional) registered&=interp_bridge_add_pre_opcode_hook(positional,foreign_sound_hook);
   static bool warned;
   if(!registered && !warned) {warned=true;fprintf(stderr,"[mmx-rush] native hook registration failed: interpreter hook table is full\n");}
 #endif

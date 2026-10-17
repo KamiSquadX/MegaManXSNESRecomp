@@ -25,6 +25,10 @@ void MmxBossRushForeignStates(unsigned id,uint8_t *fighting,uint8_t *dying);
 enum { MMX_RUSH_FOREIGN_CHILDREN=4 };
 bool MmxBossRushForeignSetChild(unsigned id,uint8_t kind,uint32_t controller);
 uint32_t MmxBossRushForeignChild(unsigned id,uint8_t kind);
+/* Shim addresses standing in for the source game's sound-effect calls
+ * (plain and positional); the runtime hooks them to queue cached clips. */
+void MmxBossRushForeignSetSoundShims(uint32_t plain,uint32_t positional);
+void MmxBossRushForeignSoundShims(uint32_t *plain,uint32_t *positional);
 /* Rebuild every relocated body for the loaded source ROMs into the cart's
  * patch windows (mmx_boss_rush_relocate.c). Restores the cart first. */
 bool MmxBossRushForeignBuild(char *error,size_t error_size);

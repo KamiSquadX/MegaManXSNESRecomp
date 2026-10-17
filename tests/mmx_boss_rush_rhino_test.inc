@@ -34,6 +34,26 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
   if(error[0]) fprintf(stderr,"rhino build: %s\n",error);
   check(MmxBossRushForeignController(23)==0xbfe5e4 && MmxBossRushForeignChild(23,0x26)==0xb8ab9b,
       "Rhino body and drill controllers register");
+  static const uint8_t effects[]={0x15,0x21,0x49,0x70,0x72,0x73};
+  for(unsigned i=0;i<sizeof(effects);++i) {
+    uint32_t frames=0;const int16_t *clip=MmxBossRushAudioForeignClip(23,effects[i],&frames);
+    int peak=0;
+    for(uint32_t k=0;clip && k<frames*2;++k) if(abs(clip[k])>peak) peak=abs(clip[k]);
+    fprintf(stderr,"rhino effect $%02x frames=%u (%.2fs) peak=%d\n",effects[i],frames,frames/32040.0,peak);
+    check(clip && frames>=320 && peak>=256,"Rhino's X3 effects render from his own driver and bank");
+    if(clip && getenv("MMX_BOSS_RUSH_RHINO_WAV")) {
+      /* Private listening copies of the rendered clips (32040 Hz stereo). */
+      char path[32];snprintf(path,sizeof(path),"rhino-%02x.wav",effects[i]);
+      FILE *w=fopen(path,"wb");check(w!=NULL,"Rhino effect WAV opens");
+      uint32_t bytes=frames*4,rate=32040,byte_rate=rate*4,chunk=36+bytes,fmt_size=16;
+      uint16_t format=1,channels=2,align=4,bits=16;
+      fwrite("RIFF",1,4,w);fwrite(&chunk,4,1,w);fwrite("WAVEfmt ",1,8,w);fwrite(&fmt_size,4,1,w);
+      fwrite(&format,2,1,w);fwrite(&channels,2,1,w);fwrite(&rate,4,1,w);fwrite(&byte_rate,4,1,w);
+      fwrite(&align,2,1,w);fwrite(&bits,2,1,w);fwrite("data",1,4,w);fwrite(&bytes,4,1,w);
+      fwrite(clip,4,frames,w);check(!fclose(w),"Rhino effect WAV writes");
+    }
+  }
+  check(!MmxBossRushAudioForeignClip(23,0x5a,NULL),"only Rhino's own effects are cached");
   check(!(MmxBossRushOffered()&(1u<<23)),"unfinished Rhino stays out of normal runs");
   MmxBossRushForeignSetPreview(true);
   check(MmxBossRushOffered()&(1u<<23),"developer preview offers the relocated Rhino");
@@ -51,8 +71,14 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
   }
   check(object!=0,"Rhino spawns in seat 1");
   unsigned seen_behavior=0,drill_frames=0,min_x=0xffff,max_x=0,max_hp=0,last=0xffffff,fighting_at=0;
+  uint32_t cue_sequence=MmxBossRushAudioGetState().sequence,heard[8]={0};
   for(unsigned t=0;t<1800;++t) {
     frame(0);rush_keep_players_alive();s=MmxBossRushGetState();
+    MmxBossRushAudioState audio=MmxBossRushAudioGetState();
+    for(;cue_sequence!=audio.sequence;++cue_sequence) {
+      const MmxBossRushAudioCue *cue=&audio.cues[cue_sequence%MMX_RUSH_AUDIO_CUES];
+      if(cue->reserved==23) heard[cue->command>>5]|=1u<<(cue->command&31);
+    }
     if(!s.bosses[1].phase || s.bosses[1].id!=23) break;
     unsigned state=g_ram[object+1]<<16|g_ram[object+2]<<8|g_ram[object+3];
     unsigned x=eagle_word(g_ram+object+5);
@@ -112,6 +138,11 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
   const uint8_t *row=MmxBossRushForeignRom(3,NULL)+0x30000+(0xe28e&0x7fff)+(0x55-1)*5;
   check(g_ram[object+0x16]==row[0] && g_ram[object+0x16],"Rhino uses his own X3 sprite set");
   check(drill_frames>0,"Rhino's drill volley spawns relocated drill projectiles");
+  #define RHINO_HEARD(c) ((heard[(c)>>5]>>((c)&31))&1)
+  fprintf(stderr,"rhino cues: fill=%u crash=%u spread=%u stop=%u grind=%u\n",RHINO_HEARD(0x15),
+      RHINO_HEARD(0x49),RHINO_HEARD(0x70),RHINO_HEARD(0x72),RHINO_HEARD(0x73));
+  check(RHINO_HEARD(0x15) && RHINO_HEARD(0x49),"Rhino's intro fill and wall crash queue his own X3 sounds");
+  check(RHINO_HEARD(0x73),"his drills queue their grinding sound");
   size_t n=RtlSaveSnapshotToMemory(start,cap);check(n,"Rhino seat snapshot saves");
   static uint8_t first[0x20000];
   for(unsigned t=0;t<60;++t) {frame(0);rush_keep_players_alive();}

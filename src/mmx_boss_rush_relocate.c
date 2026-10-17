@@ -1,6 +1,7 @@
 #include "mmx_boss_rush_foreign.h"
 #include "mmx_boss_rush.h"
 #include "mmx_cart_extension.h"
+#include "mmx_boss_rush_audio.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -25,13 +26,16 @@ typedef struct MmxRelocBoss {
   const MmxRelocBlob *blobs;size_t blob_count;
   const MmxRelocPatch *patches;size_t patch_count;
   const MmxRelocChild *children;size_t child_count;
+  unsigned sound_bank;uint32_t sfx,sfx_pan;
+  const uint8_t *effects;size_t effect_count;
 } MmxRelocBoss;
 #define COUNT(a) (sizeof(a)/sizeof(*(a)))
 static const MmxRelocBoss kBosses[]={
   {"TUNNEL RHINO",3,k_rhino_roster_id,k_rhino_body,2,4,
    k_rhino_banks,COUNT(k_rhino_banks),k_rhino_copies,COUNT(k_rhino_copies),
    k_rhino_shim_code,k_rhino_blobs,COUNT(k_rhino_blobs),
-   k_rhino_patches,COUNT(k_rhino_patches),k_rhino_children,COUNT(k_rhino_children)},
+   k_rhino_patches,COUNT(k_rhino_patches),k_rhino_children,COUNT(k_rhino_children),
+   k_rhino_sound_bank,k_rhino_sfx,k_rhino_sfx_pan,k_rhino_effects,COUNT(k_rhino_effects)},
 };
 /* Zero/sink area for X3-only globals: reads see zero, writes hit ROM. */
 enum { ZERO_AREA=0x86fe00, ZERO_SIZE=0x200 };
@@ -88,17 +92,22 @@ static bool build(const MmxRelocBoss *boss,const uint8_t *rom,size_t size,char *
     if(!MmxBossRushForeignSetChild(boss->roster_id,boss->children[i].kind,boss->children[i].controller)) {
       snprintf(error,cap,"%s: cannot register projectile $%02X",boss->name,boss->children[i].kind);return false;
     }
+  /* Its X3 sound calls are hooked shims; render those effects from its own
+   * driver and sound bank. A failed cache leaves the boss silent. */
+  MmxBossRushForeignSetSoundShims(boss->sfx,boss->sfx_pan);
+  MmxBossRushAudioPrepareForeign(boss->roster_id,rom,size,boss->sound_bank,boss->effects,(unsigned)boss->effect_count);
   return true;
 }
 bool MmxBossRushForeignBuild(char *error,size_t cap) {
   for(size_t i=0;i<COUNT(kBosses);++i) MmxBossRushForeignSetController(kBosses[i].roster_id,0);
+  MmxBossRushForeignSetSoundShims(0,0);
   MmxCartExtensionClear();
   if(!MmxCartPatchAvailable()) {
     snprintf(error,cap,"The loaded Mega Man X image cannot host relocated bosses.");return false;
   }
   for(size_t i=0;i<COUNT(kBosses);++i) {
     size_t size=0;const uint8_t *rom=MmxBossRushForeignRom(kBosses[i].game,&size);
-    if(!rom) continue;
+    if(!rom) {MmxBossRushAudioPrepareForeign(kBosses[i].roster_id,NULL,0,0,NULL,0);continue;}
     if(!build(&kBosses[i],rom,size,error,cap)) {
       MmxBossRushForeignSetController(kBosses[i].roster_id,0);MmxCartExtensionClear();
       return false;
