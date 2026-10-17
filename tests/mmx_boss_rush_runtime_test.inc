@@ -160,8 +160,8 @@ static void rush_foreign_spike_checks(uint8_t *start,size_t cap) {
   static const uint8_t body[]={0xe6,0x3e,0x22,0x86,0x90,0x84,0x85,0x3f,0x6b};
   check(MmxCartExtensionWrite(0xf08000,body,sizeof(body)),"spike controller writes to bank $F0");
   check(!memcmp(RomPtr(0xf08000),body,sizeof(body)),"bank $F0 reads back the spike controller");
-  check(!MmxCartExtensionWrite(0xb08000,body,sizeof(body)) && !MmxCartExtensionWrite(0xf07fff,body,2),
-      "writes outside the extension windows are refused");
+  check(!MmxCartExtensionWrite(0xa08000,body,sizeof(body)) && !MmxCartExtensionWrite(0x86f000,body,2) &&
+      !MmxCartExtensionWrite(0xf07fff,body,2),"writes outside the extension windows are refused");
   check(MmxBossRushForeignSetController(23,0xf08000),"spike controller registers for roster id 23");
   MmxBossRushState s=MmxBossRushGetState();
   memset(s.bosses,0,sizeof(s.bosses));memset(s.owner,0,sizeof(s.owner));
@@ -202,6 +202,7 @@ static void rush_foreign_spike_checks(uint8_t *start,size_t cap) {
   check(!memcmp(cart->rom+0x380000,cart->rom+0x180000,0x8000),"clearing restores the mirrored bank");
   puts("MMX BOSS RUSH FOREIGN SPIKE CHECKS PASSED");
 }
+#include "mmx_boss_rush_rhino_test.inc"
 static uint8_t rush_extension_value;
 static void rush_extension_reset(uint8_t *ram) {(void)ram;rush_extension_value=0;}
 static void rush_extension_save(uint8_t out[]) {out[0]='R';out[1]=rush_extension_value;}
@@ -1117,6 +1118,7 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
   check(player_screen_x>=104 && player_screen_x<=160,
       "the encounter begins with the player near the middle of the view");
   if(getenv("MMX_BOSS_RUSH_FOREIGN_SPIKE_TEST")) {rush_foreign_spike_checks(start,cap);return;}
+  if(getenv("MMX_BOSS_RUSH_RHINO_TEST")) {rush_rhino_checks(start,cap,getenv("MMX_BOSS_RUSH_X3_ROM"));return;}
   if(getenv("MMX_BOSS_RUSH_ARENA_TEST")) {
     MmxBossRushState s=MmxBossRushGetState();
     memset(s.bosses,0,sizeof(s.bosses));memset(s.owner,0,sizeof(s.owner));

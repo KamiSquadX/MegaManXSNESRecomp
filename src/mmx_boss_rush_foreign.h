@@ -17,5 +17,21 @@ uint32_t MmxBossRushForeignImplemented(void);
  * Registering one marks that body implemented; 0 removes it. */
 bool MmxBossRushForeignSetController(unsigned id,uint32_t controller);
 uint32_t MmxBossRushForeignController(unsigned id);
-/* Bosses the next run may draw from: X1 plus every loaded, implemented boss. */
+/* Body states (+$01) that mean the entrance finished and that it is dying;
+ * X1 bodies use 4 and 6. Defaults match X1 until a body registers its own. */
+bool MmxBossRushForeignSetStates(unsigned id,uint8_t fighting,uint8_t dying);
+void MmxBossRushForeignStates(unsigned id,uint8_t *fighting,uint8_t *dying);
+/* Controllers for the boss's own projectile classes (enemy-projectile list). */
+enum { MMX_RUSH_FOREIGN_CHILDREN=4 };
+bool MmxBossRushForeignSetChild(unsigned id,uint8_t kind,uint32_t controller);
+uint32_t MmxBossRushForeignChild(unsigned id,uint8_t kind);
+/* Rebuild every relocated body for the loaded source ROMs into the cart's
+ * patch windows (mmx_boss_rush_relocate.c). Restores the cart first. */
+bool MmxBossRushForeignBuild(char *error,size_t error_size);
+/* After a pack loads or unloads, rebuild or restore the cart once the game
+ * image exists. Called from the host frame; idempotent. */
+void MmxBossRushForeignSync(void);
+/* Bosses the next run may draw from: X1 plus every loaded body that is
+ * finished (art, sound, weaknesses). Preview also offers unfinished bodies. */
 uint32_t MmxBossRushForeignOffered(void);
+void MmxBossRushForeignSetPreview(bool enabled);

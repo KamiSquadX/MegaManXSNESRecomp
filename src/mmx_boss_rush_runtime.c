@@ -308,8 +308,21 @@ static void foreign_dispatch_hook(CpuState *cpu,uint32_t pc) {
   stack_push(cpu,pc>>16,1);stack_push(cpu,MMX_RUSH_STUB_RTS-1,2);
   interp_bridge_pre_opcode_redirect(controller);
 }
+/* The enemy-projectile list dispatches the same way at $80:D48A
+ * (JMP ($F761,x)). A foreign seat's own projectile classes run its
+ * relocated controllers; every other projectile keeps X1's table. */
+static void foreign_projectile_hook(CpuState *cpu,uint32_t pc) {
+  if(!playing() || cpu->D<0x1428 || cpu->D>=0x1628) return;
+  int owner=MmxBossRushOwner(cpu->D);if(owner<0) return;
+  MmxBossRushBoss b=MmxBossRushGetState().bosses[owner];
+  if(MmxBossRushNative(b.id)) return;
+  uint32_t controller=MmxBossRushForeignChild(b.id,g_ram[cpu->D+10]);if(!controller) return;
+  stack_push(cpu,pc>>16,1);stack_push(cpu,MMX_RUSH_STUB_RTS-1,2);
+  interp_bridge_pre_opcode_redirect(controller);
+}
 void MmxBossRushHostFrame(void) {
 #if !MMX_VARIANT_JP
+  MmxBossRushForeignSync();
   static bool score_opened,score_warned;
   if(!score_opened) {
     char path[4096];score_opened=true;
@@ -336,6 +349,8 @@ void MmxBossRushHostFrame(void) {
     registered&=interp_bridge_add_pre_opcode_hook(bosses[i],boss_hook);
   registered&=interp_bridge_add_pre_opcode_hook(0x00d544,foreign_dispatch_hook);
   registered&=interp_bridge_add_pre_opcode_hook(0x80d544,foreign_dispatch_hook);
+  registered&=interp_bridge_add_pre_opcode_hook(0x00d48a,foreign_projectile_hook);
+  registered&=interp_bridge_add_pre_opcode_hook(0x80d48a,foreign_projectile_hook);
   static bool warned;
   if(!registered && !warned) {warned=true;fprintf(stderr,"[mmx-rush] native hook registration failed: interpreter hook table is full\n");}
 #endif
@@ -559,11 +574,14 @@ void MmxBossRushAfterFrame(uint8_t *r) {
   for(unsigned i=0;i<2;++i) {
     MmxBossRushBoss *b=&s.bosses[i];if(!b->phase) continue;
     unsigned native=r[b->object+1],hp=r[b->object+0x27]&127;
-    /* State 4 is ordinary combat, 8 is a hit reaction and 6 is death.
-     * Watching only state 4 misses a boss hit as its entrance completes. */
-    if(b->phase==MMX_RUSH_ENTERING && native>=4) b->phase=MMX_RUSH_FIGHTING;
+    /* X1: state 4 is ordinary combat, 8 is a hit reaction and 6 is death.
+     * Watching only state 4 misses a boss hit as its entrance completes.
+     * Relocated X2/X3 bodies register their own combat and death states. */
+    uint8_t fighting=4,dying=6;
+    if(!MmxBossRushNative(b->id)) MmxBossRushForeignStates(b->id,&fighting,&dying);
+    if(b->phase==MMX_RUSH_ENTERING && native>=fighting) b->phase=MMX_RUSH_FIGHTING;
     if(b->phase==MMX_RUSH_DYING || (b->phase==MMX_RUSH_FIGHTING &&
-        (native==6 || !r[b->object]))) hp=0;
+        (native==dying || !r[b->object]))) hp=0;
     b->health=(uint8_t)(hp>32?32:hp);
     if(b->phase==MMX_RUSH_FIGHTING && !b->health) {
       b->death_x=(int16_t)(word(r+b->object+5)-s.camera_x);

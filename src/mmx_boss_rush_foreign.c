@@ -1,7 +1,10 @@
 #include "mmx_boss_rush_foreign.h"
 #include "mmx_boss_rush.h"
 #include "mmx_source_assets.h"
+#include "mmx_cart_extension.h"
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static uint8_t *roms[2];
 static size_t sizes[2];
@@ -9,19 +12,25 @@ static size_t sizes[2];
 /* A body is implemented once its relocated controller is registered.
  * Tunnel Rhino (id 23) is the pilot. */
 static uint32_t implemented;
-static uint32_t controllers[MMX_RUSH_ROSTER];
+typedef struct ForeignBody {
+  uint32_t controller,children[MMX_RUSH_FOREIGN_CHILDREN];
+  uint8_t fighting,dying,kinds[MMX_RUSH_FOREIGN_CHILDREN];
+} ForeignBody;
+static ForeignBody bodies[MMX_RUSH_ROSTER];
 
+static bool dirty;
 static void publish(void) {MmxBossRushSetOffered(MmxBossRushForeignOffered());}
 bool MmxBossRushForeignLoad(unsigned game,const char *rom,char *error,size_t error_size) {
   if(game!=2 && game!=3) return false;
   unsigned char *image=NULL;size_t size=0;
   if(!MmxSourceRomLoad(rom,game,&image,&size,error,error_size)) return false;
   free(roms[game-2]);roms[game-2]=image;sizes[game-2]=size;
-  publish();return true;
+  dirty=true;publish();return true;
 }
 void MmxBossRushForeignUnload(void) {
   for(unsigned i=0;i<2;++i) {free(roms[i]);roms[i]=NULL;sizes[i]=0;}
-  publish();
+  memset(bodies,0,sizeof(bodies));implemented=0;
+  dirty=true;publish();
 }
 bool MmxBossRushForeignReady(unsigned game) {
   return (game==2 || game==3) && roms[game-2]!=NULL;
@@ -34,16 +43,55 @@ const uint8_t *MmxBossRushForeignRom(unsigned game,size_t *size) {
 uint32_t MmxBossRushForeignImplemented(void) {return implemented;}
 bool MmxBossRushForeignSetController(unsigned id,uint32_t controller) {
   if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || controller>0xffffff) return false;
-  controllers[id]=controller;
-  if(controller) implemented|=1u<<id; else implemented&=~(1u<<id);
+  if(controller) {bodies[id].controller=controller;implemented|=1u<<id;}
+  else {memset(&bodies[id],0,sizeof(bodies[id]));implemented&=~(1u<<id);}
   publish();return true;
 }
 uint32_t MmxBossRushForeignController(unsigned id) {
-  return id<MMX_RUSH_ROSTER?controllers[id]:0;
+  return id<MMX_RUSH_ROSTER?bodies[id].controller:0;
 }
+bool MmxBossRushForeignSetStates(unsigned id,uint8_t fighting,uint8_t dying) {
+  if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || fighting==dying) return false;
+  bodies[id].fighting=fighting;bodies[id].dying=dying;return true;
+}
+void MmxBossRushForeignStates(unsigned id,uint8_t *fighting,uint8_t *dying) {
+  uint8_t f=4,d=6;
+  if(id<MMX_RUSH_ROSTER && bodies[id].fighting!=bodies[id].dying) {f=bodies[id].fighting;d=bodies[id].dying;}
+  if(fighting) *fighting=f;
+  if(dying) *dying=d;
+}
+bool MmxBossRushForeignSetChild(unsigned id,uint8_t kind,uint32_t controller) {
+  if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || !bodies[id].controller || controller>0xffffff) return false;
+  ForeignBody *b=&bodies[id];
+  for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
+    if(b->children[i] && b->kinds[i]==kind) {b->children[i]=controller;return true;}
+  for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
+    if(!b->children[i]) {b->children[i]=controller;b->kinds[i]=kind;return controller!=0;}
+  return false;
+}
+uint32_t MmxBossRushForeignChild(unsigned id,uint8_t kind) {
+  if(id>=MMX_RUSH_ROSTER) return 0;
+  for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
+    if(bodies[id].children[i] && bodies[id].kinds[i]==kind) return bodies[id].children[i];
+  return 0;
+}
+/* Relocated bodies whose art, sound and weaknesses are finished. Others run
+ * only in developer preview (MMX_BOSS_RUSH_PREVIEW=1 or the test hook). */
+static const uint32_t playable=0;
+static int preview=-1;
+void MmxBossRushForeignSetPreview(bool enabled) {preview=enabled;publish();}
 uint32_t MmxBossRushForeignOffered(void) {
-  uint32_t mask=MMX_RUSH_X1_MASK;
-  if(MmxBossRushForeignReady(2)) mask|=implemented&MMX_RUSH_X2_MASK;
-  if(MmxBossRushForeignReady(3)) mask|=implemented&MMX_RUSH_X3_MASK;
+  if(preview<0) {const char *v=getenv("MMX_BOSS_RUSH_PREVIEW");preview=v && *v && *v!='0';}
+  uint32_t ready=preview?implemented:implemented&playable,mask=MMX_RUSH_X1_MASK;
+  if(MmxBossRushForeignReady(2)) mask|=ready&MMX_RUSH_X2_MASK;
+  if(MmxBossRushForeignReady(3)) mask|=ready&MMX_RUSH_X3_MASK;
   return mask;
+}
+void MmxBossRushForeignSync(void) {
+  if(!dirty || !MmxCartPatchAvailable()) return;
+  dirty=false;
+  if(!MmxBossRushForeignReady(2) && !MmxBossRushForeignReady(3)) {MmxCartExtensionClear();return;}
+  char error[256];
+  if(!MmxBossRushForeignBuild(error,sizeof(error)))
+    fprintf(stderr,"[mmx-rush] %s; those Mavericks stay out of Boss Rush\n",error);
 }

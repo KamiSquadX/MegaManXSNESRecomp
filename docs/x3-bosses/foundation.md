@@ -100,22 +100,78 @@ checks it against the USA ROM.
   image identity is unchanged, but this is untested); renderer captures of
   foreign bodies; any real relocated X3 code.
 
-## Next: relocating Tunnel Rhino
+## Tunnel Rhino relocation (running, 2026-10-17)
 
-1. A relocation descriptor per boss (address-only, in source control): the
-   code and data ranges to copy (controller `$3F:E5E4`-`$ECA1`, palette
-   helpers `$13:F7D6`-`$F811`, projectile class `$08:AB9B`-`$AE69`, the
-   `$86` tables he reads), the X3-to-X1 helper map above, and the RAM
-   remaps (player `$09D8`→`$0BA8`, camera `$1E5D/$1E60`→X1's, HUD boss
-   pointer `$1F1F`→`$1F0E`, mirror bytes `$1F54..$1F57` → private Rush
-   storage).
-2. A builder that copies from the in-memory X3 ROM, applies the
-   relocations, writes the extension banks and registers the controller.
-   Unmapped helpers fail the build loudly rather than running X3 addresses.
-3. Shims for X3-only behavior: intro lock, SPC bank upload, Doppler checks,
-   weapon award on death (replaced by the Rush cleanup path).
-4. The projectile class needs its own redirect in X1's enemy-projectile
-   dispatch, mirroring the body hook.
+Rhino's original X3 code runs inside X1's engine. `tools/relocate_boss.py`
+traces his body, his drill projectile and the X3 helpers they need, then
+writes `src/mmx_boss_rush_x3_rhino.inc`: 1,326 traced instructions and 183
+rewritten operands, as addresses plus the original operand values.
+`src/mmx_boss_rush_relocate.c` rebuilds him from the user's X3 ROM when the
+pack loads.
+
+**Layout.** X1 uses data bank `$86` for its enemy loop, the same convention
+as X3, and X1's damage, terrain and overlap helpers read hitboxes through
+that bank. Rhino therefore runs with X1's `$86`:
+
+| Where | What |
+| --- | --- |
+| `$3F` (X3 `$3F`, same canonical bank) | Rhino's controller, X3 animation sets/records |
+| `$33`, `$38`, `$34`, `$32` (X3 `$13`, `$08`, `$04`, `$02`) | palette helpers, drill class `$26`, X3 animation/motion/overlap helpers |
+| `$86:FA80`-`$FAFF` | shims (`RTL`, finished fade, resume combat, delete, class init) |
+| `$86:FB00`-`$FBB2` | his `$86` tables: body/drill hitboxes, drill spawn tables, angle table |
+| `$86:FE00`-`$FFFF` | zero/sink area for X3-only globals |
+
+All copied banks sit in X1's unused `$30`-`$3F` padding; the `$86` tail is
+`$FF` padding in the USA ROM. Clearing restores both.
+
+**Classification** (anything else fails generation):
+
+- *X1 helpers:* cull `$82:80B4`, terrain `$84:91BE`, RNG `$84:9086`, shot
+  damage `$84:9B43`, contact `$84:9B03`, projectile slot `$82:8358`, face
+  player `$84:ACA5`.
+- *Relocated X3 helpers:* animation start/advance (`$04:B967`/`$B94A`, so he
+  reads X3's own animation sets), velocity (`$02:D7F3`/`$D78E`/`$D6F8`),
+  hitbox overlap `$04:CC5C`, flash timer `$02:DF64`, player-death guard
+  `$04:D8D5`, his palette helpers `$13:F7D6`/`$F7FC`.
+- *Shims:* music, SPC upload, sound effects, intro/pin player lock, screen
+  shake, dust, stock explosion and weapon award, stun, Doppler graphics; the
+  generic hurt reaction resumes combat; deletes clear the object; class
+  init writes his sprite set, HP, contact damage and defense profile from
+  the ROM's class row.
+- *RAM:* X3's `$09xx`/`$0Axx` player block is X1's `+$1D0`; camera
+  `$1E5D/$1E60`→`$1E4D/$1E50`; HUD boss `$1F1F`→`$1F0E`; the player object
+  immediate `$09D8`→`$0BA8`. X3-only flags read zero and ignore writes:
+  stage/defeated/music/last-weapon checks, state mirrors for children,
+  OBJ palette buffer `$0480`-`$04BF`, palette backup `$7F:CAC0`.
+
+**Dispatch.** Hooks at X1's enemy (`$80:D544`) and enemy-projectile
+(`$80:D48A`) class dispatches enter registered controllers for objects owned
+by a foreign seat. Rush treats a foreign body as fighting at state `$01=2`
+and dying at `$01=4`; defeat and cleanup use the normal Rush path.
+
+**Measured** (`MMX_BOSS_RUSH_RHINO_TEST=1` with `MMX_BOSS_RUSH_TEST=1` and
+`MMX_BOSS_RUSH_X3_ROM`): his intro drops in and fills his meter to 32, then
+he chooses among his original charge, drill volley and idle behaviors,
+charges wall to wall at 4 px/frame, and fires all three volley drills as
+relocated projectiles. A native Penguin fights beside him. Replay is
+byte-exact, Rush counts his defeat, and cleanup removes him and his drills.
+Unloading the pack removes him.
+
+**Not done** (why he is preview-only, `MMX_BOSS_RUSH_PREVIEW=1`):
+
+- Art: the X1 sprite pipeline draws his X3 sprite set with X1 tables. The
+  renderer must draw his poses from X3 resource `$1D` and layouts at
+  `$8D:9035` (see [tunnel-rhino.md](tunnel-rhino.md)).
+- Sound: all effects are shimmed silent; bank `$5D` needs the isolated SPC
+  path.
+- Weaknesses: profile `$18` currently indexes X1's damage table; his
+  Acid Burst flinch (`$1F2F`) is disabled.
+- Pinning: X3 player-state values (`$12`, `$1E`, `$74`) are compared against
+  X1 states, so the drill-charge pin never triggers.
+- Palette effects (drill-charge flashing) are sunk.
+- `$09CB`/`$09CC` frame-counter mapping (`+$1D0`) is unverified.
+- Netplay with relocated bodies is untested; preview is a local setting and
+  must not differ between peers.
 
 ## Remaining foundation pieces
 
