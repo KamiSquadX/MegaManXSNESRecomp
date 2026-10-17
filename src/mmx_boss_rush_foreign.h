@@ -13,5 +13,9 @@ bool MmxBossRushForeignReady(unsigned game);
 const uint8_t *MmxBossRushForeignRom(unsigned game,size_t *size);
 /* Roster ids (8..23) whose bodies exist in this build. */
 uint32_t MmxBossRushForeignImplemented(void);
+/* Body controller built in a cart extension bank for a roster id, or 0.
+ * Registering one marks that body implemented; 0 removes it. */
+bool MmxBossRushForeignSetController(unsigned id,uint32_t controller);
+uint32_t MmxBossRushForeignController(unsigned id);
 /* Bosses the next run may draw from: X1 plus every loaded, implemented boss. */
 uint32_t MmxBossRushForeignOffered(void);

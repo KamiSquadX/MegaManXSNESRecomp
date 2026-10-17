@@ -1,4 +1,5 @@
 #include "mmx_boss_rush.h"
+#include "mmx_boss_rush_foreign.h"
 #include "mmx_boss_rush_audio.h"
 #include "mmx_boss_rush_score.h"
 #include "host_paths.h"
@@ -293,6 +294,20 @@ static void boss_hook(CpuState *cpu,uint32_t pc) {
       (s.bosses[owner].phase!=MMX_RUSH_FIGHTING || !(g_ram[0xbcf]&127)))
     interp_bridge_pre_opcode_redirect((pc&0xff0000)|0x9b79);
 }
+/* $80:F8DD's class stubs are `JSL controller; RTS`. A relocated X2/X3 body
+ * replaces that call for its own seat: enter its extension-bank controller
+ * with a JSL frame returning to an existing native RTS ($80:F8C3), so the
+ * enemy loop continues exactly as after a stock stub. */
+enum { MMX_RUSH_STUB_RTS=0xf8c3 };
+static void foreign_dispatch_hook(CpuState *cpu,uint32_t pc) {
+  if(!playing()) return;
+  int owner=MmxBossRushOwner(cpu->D);if(owner<0) return;
+  MmxBossRushBoss b=MmxBossRushGetState().bosses[owner];
+  if(!b.phase || b.object!=cpu->D || MmxBossRushNative(b.id)) return;
+  uint32_t controller=MmxBossRushForeignController(b.id);if(!controller) return;
+  stack_push(cpu,pc>>16,1);stack_push(cpu,MMX_RUSH_STUB_RTS-1,2);
+  interp_bridge_pre_opcode_redirect(controller);
+}
 void MmxBossRushHostFrame(void) {
 #if !MMX_VARIANT_JP
   static bool score_opened,score_warned;
@@ -319,6 +334,8 @@ void MmxBossRushHostFrame(void) {
     0x8498ff,0x84990d,0x81b7bf,0x81b81b,0x87efd2,0x87925e,0xc93c};
   for(unsigned i=0;i<sizeof(bosses)/sizeof(*bosses);++i)
     registered&=interp_bridge_add_pre_opcode_hook(bosses[i],boss_hook);
+  registered&=interp_bridge_add_pre_opcode_hook(0x00d544,foreign_dispatch_hook);
+  registered&=interp_bridge_add_pre_opcode_hook(0x80d544,foreign_dispatch_hook);
   static bool warned;
   if(!registered && !warned) {warned=true;fprintf(stderr,"[mmx-rush] native hook registration failed: interpreter hook table is full\n");}
 #endif
@@ -512,15 +529,18 @@ void MmxBossRushFrame(uint8_t *r,uint16_t input) {
         for(unsigned d=0xe68;d<0x1228;d+=64) if(!r[d]) {object=d;break;}
         if(!object) continue;
         int id=MmxBossRushNextBoss();if(id<0) continue;
-        /* X2/X3 bodies are offered only once implemented; never write an X1
-         * class byte for them. */
-        if(!MmxBossRushNative((unsigned)id)) continue;
+        /* X2/X3 bodies are offered only once their relocated controller
+         * exists; the class dispatch hook then replaces the stock stub. */
+        bool native=MmxBossRushNative((unsigned)id);
+        if(!native && !MmxBossRushForeignController((unsigned)id)) continue;
         if(!MmxBossRushAssign(i,(unsigned)id,(uint16_t)object)) continue;
         s=MmxBossRushGetState();
         for(unsigned n=0;n<sizeof(globals)/sizeof(*globals);++n)
           s.bosses[i].globals[n]=r[globals[n]];
         MmxBossRushSetState(&s);
-        memset(r+object,0,64);r[object]=0x81;r[object+10]=kMmxBossRushBosses[id].kind;
+        /* Foreign bodies keep a valid X1 boss class so any class-indexed
+         * native table stays in range; their dispatch never reaches it. */
+        memset(r+object,0,64);r[object]=0x81;r[object+10]=native?kMmxBossRushBosses[id].kind:0x02;
         unsigned x=entry_x(r,i),y=s.camera_y+(id==4?43:96);
         put(r+object+5,x);put(r+object+8,y);put(r+object+0x22,x);put(r+object+0x24,y);
       }

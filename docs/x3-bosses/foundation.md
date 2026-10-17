@@ -69,29 +69,58 @@ Two ways to bring a Maverick over:
    physics and damage handling is reimplemented, roughly 2–4 KB of 65816 per
    boss, with drift risk and duplicated engine logic.
 
-**Feasibility spike before committing to (1):**
+## Feasibility spike (passed, 2026-10-17)
 
-- Can the cart image be extended at activation without changing the
-  original game's mirroring? Findings so far: `snes_loadRom` pads X1's
-  1.5 MB image to 2 MB by mirroring its last 512 KB, and LoROM banks
-  `$C0`–`$FF` map to image offsets 2–4 MB (`cart.c`, `bank & $7F`), which X1
-  never reads. A 4 MB image whose upper half mirrors the original 2 MB keeps
-  every existing read unchanged; extension code can then occupy banks
-  `$F0`–`$FD` (`$8000`–`$FFFF`). The framework already grows images in
-  memory for IPS/BPS content variants (`rom_patch.h`).
-- Does the interpreter execute and hook code in those banks? AOT coverage
-  only exists for X1 banks; uncovered code runs through the interpreter.
-- Can a Rush seat's class dispatch (`$80:D544`, `JMP ($F8DD,x)`) be
-  redirected to an extension-bank controller with a pre-opcode hook?
-- Do the build identity and netplay checks accept a derived image that both
-  peers construct identically from the same verified ROMs?
+Approach (1) is viable. `src/mmx_cart_extension.c` and the Rush dispatch hook
+implement it; `MMX_BOSS_RUSH_FOREIGN_SPIKE_TEST=1` with `MMX_BOSS_RUSH_TEST=1`
+checks it against the USA ROM.
 
-If the spike fails, fall back to (2) using the same roster, packs and seat
-ownership already in place.
+- **Cart extension.** `snes_loadRom` pads X1's 1.5 MB image to 2 MB, and
+  LoROM banks `$C0`-`$FF` map to image offsets 2-4 MB (`bank & $7F`), which
+  X1 never reads. `MmxCartExtensionEnsure` grows the image to 4 MB with the
+  upper half mirroring the original 2 MB, so every existing read is
+  unchanged, and replaces both `cart->rom` and `g_rom`. `romImageSize`, and
+  therefore the image identity hash, is unchanged. Writes are limited to
+  banks `$F0`-`$FD`, `$8000`-`$FFFF`, and invalidate the interpreter's
+  decode cache.
+- **Dispatch.** X1's enemy loop (`$80:D4EA`/`$D507`) already runs in the
+  interpreter while Rush is active, so a pre-opcode hook at the class
+  dispatch `$80:D544` (`JMP ($F8DD,x)`) fires without regenerating code.
+  For a seat whose roster id has a registered controller, the hook pushes a
+  JSL frame returning to an existing native `RTS` (`$80:F8C3`) and redirects
+  into the extension bank, which is exactly what a stock `JSL; RTS` stub does.
+- **Measured:** a bank-`$F0` controller (`INC $3E; JSL $84:9086; STA $3F;
+  RTL`) for roster id 23 in seat 1 ran exactly once per frame for 60 frames.
+  Its native RNG call returned into the extension bank every frame. A
+  native Penguin kept running in seat 0. A 30-frame snapshot replay
+  matched all 128 KB of WRAM byte for byte, and clearing restored the
+  mirrored bank. The full 28-pair Rush suite still passes.
+- **Not yet covered:** netplay between two peers with an extended image
+  (both peers build identical bytes from the same verified ROMs, and the
+  image identity is unchanged, but this is untested); renderer captures of
+  foreign bodies; any real relocated X3 code.
+
+## Next: relocating Tunnel Rhino
+
+1. A relocation descriptor per boss (address-only, in source control): the
+   code and data ranges to copy (controller `$3F:E5E4`-`$ECA1`, palette
+   helpers `$13:F7D6`-`$F811`, projectile class `$08:AB9B`-`$AE69`, the
+   `$86` tables he reads), the X3-to-X1 helper map above, and the RAM
+   remaps (player `$09D8`→`$0BA8`, camera `$1E5D/$1E60`→X1's, HUD boss
+   pointer `$1F1F`→`$1F0E`, mirror bytes `$1F54..$1F57` → private Rush
+   storage).
+2. A builder that copies from the in-memory X3 ROM, applies the
+   relocations, writes the extension banks and registers the controller.
+   Unmapped helpers fail the build loudly rather than running X3 addresses.
+3. Shims for X3-only behavior: intro lock, SPC bank upload, Doppler checks,
+   weapon award on death (replaced by the Rush cleanup path).
+4. The projectile class needs its own redirect in X1's enemy-projectile
+   dispatch, mirroring the body hook.
 
 ## Remaining foundation pieces
 
-- Foreign body spawn in a Rush seat (today a non-X1 id is skipped).
+- Foreign body spawn in a Rush seat: done for registered controllers (X1
+  boss class byte `$02`, so class-indexed native tables stay in range).
 - Private art and palettes for foreign bodies in the renderer (decode the
   source resource once from the in-memory ROM, as X1 bosses do).
 - Foreign sound effects through the isolated SPC renderer, using the source

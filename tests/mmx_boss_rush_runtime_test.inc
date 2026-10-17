@@ -1,6 +1,8 @@
 /* Exercise the title entry and the original controllers in a real ROM.
  * Kept separate from the portable queue tests: no ROM fixtures are shipped. */
 #include "mod_audio.h"
+#include "mmx_boss_rush_foreign.h"
+#include "mmx_cart_extension.h"
 #include "mmx_wide_policy.h"
 
 static void rush_keep_players_alive(void) {
@@ -139,6 +141,66 @@ static void rush_return_title_checks(void) {
   check(MmxBossRushGetState().mode==MMX_RUSH_OFF && MmxBossRushGetState().menu==1,
       "native opening returns to all four title choices");
   puts("MMX BOSS RUSH RETURN TITLE CHECKS PASSED");
+}
+/* Feasibility spike: a body controller built in a cart extension bank runs
+ * inside X1's enemy loop for one Rush seat, calls a native X1 helper, and
+ * replays deterministically. Seat 0 keeps a native Penguin beside it. */
+static void rush_foreign_spike_checks(uint8_t *start,size_t cap) {
+  const Cart *cart=g_snes->cart;
+  uint32_t image=cart->romImageSize;uint8_t before[16];
+  memcpy(before,cart->rom+0x1ffff0,sizeof(before));
+  check(MmxCartExtensionEnsure() && MmxCartExtensionReady(),"cart image grows to 4 MB");
+  cart=g_snes->cart;
+  check(cart->romSize==0x400000 && cart->romImageSize==image && g_rom==cart->rom,
+      "extension keeps the original image identity and updates g_rom");
+  check(!memcmp(cart->rom+0x1ffff0,before,sizeof(before)) &&
+      !memcmp(cart->rom+0x200000,cart->rom,0x200000),
+      "upper half mirrors the original padded image before any write");
+  /* INC $3E ; JSL $84:9086 (native RNG) ; STA $3F ; RTL */
+  static const uint8_t body[]={0xe6,0x3e,0x22,0x86,0x90,0x84,0x85,0x3f,0x6b};
+  check(MmxCartExtensionWrite(0xf08000,body,sizeof(body)),"spike controller writes to bank $F0");
+  check(!memcmp(RomPtr(0xf08000),body,sizeof(body)),"bank $F0 reads back the spike controller");
+  check(!MmxCartExtensionWrite(0xb08000,body,sizeof(body)) && !MmxCartExtensionWrite(0xf07fff,body,2),
+      "writes outside the extension windows are refused");
+  check(MmxBossRushForeignSetController(23,0xf08000),"spike controller registers for roster id 23");
+  MmxBossRushState s=MmxBossRushGetState();
+  memset(s.bosses,0,sizeof(s.bosses));memset(s.owner,0,sizeof(s.owner));
+  memset(g_ram+0xe68,0,0x3c0);memset(g_ram+0x1428,0,0x8e0);s.queued=0;
+  check(MmxBossRushSetState(&s),"spike clears the opening pair");
+  MmxBossRushRosterState roster={.available=MMX_RUSH_X1_MASK|(1u<<23),.queued=2};
+  roster.queue[0]=0;roster.queue[1]=23;
+  check(MmxBossRushRosterSetState(&roster),"spike queues Penguin and roster id 23");
+  unsigned object=0;
+  for(unsigned t=0;t<600 && !object;++t) {
+    frame(0);rush_keep_players_alive();s=MmxBossRushGetState();
+    if(s.bosses[1].phase && s.bosses[1].id==23) object=s.bosses[1].object;
+  }
+  check(object && MmxBossRushOwner(object)==1,"roster id 23 spawns in seat 1");
+  for(unsigned t=0;t<5;++t) {frame(0);rush_keep_players_alive();}
+  uint8_t counter=g_ram[object+0x3e];uint16_t rng=eagle_word(g_ram+0xba6);
+  unsigned changes=0;uint8_t last=g_ram[object+0x3f];
+  for(unsigned t=0;t<60;++t) {
+    frame(0);rush_keep_players_alive();
+    if(g_ram[object+0x3f]!=last) {++changes;last=g_ram[object+0x3f];}
+  }
+  unsigned advanced=(uint8_t)(g_ram[object+0x3e]-counter);
+  fprintf(stderr,"foreign spike counter advanced=%u rng-writes=%u rng %04x->%04x penguin=%u:%u\n",
+      advanced,changes,rng,eagle_word(g_ram+0xba6),MmxBossRushGetState().bosses[0].phase,g_ram[MmxBossRushGetState().bosses[0].object+1]);
+  check(advanced==60,"extension controller runs once per frame for its seat");
+  check(changes>=30 && eagle_word(g_ram+0xba6)!=rng,"native X1 RNG call returns into the extension bank");
+  s=MmxBossRushGetState();
+  check(s.bosses[0].id==0 && s.bosses[0].phase && g_ram[s.bosses[0].object] && s.bosses[1].object==object,
+      "native Penguin keeps running beside the foreign seat");
+  size_t n=RtlSaveSnapshotToMemory(start,cap);check(n,"foreign seat snapshot saves");
+  static uint8_t first[0x20000];
+  for(unsigned t=0;t<30;++t) {frame(0);rush_keep_players_alive();}
+  memcpy(first,g_ram,sizeof(first));
+  check(RtlLoadSnapshotFromMemory(start,n),"foreign seat snapshot restores");
+  for(unsigned t=0;t<30;++t) {frame(0);rush_keep_players_alive();}
+  check(!memcmp(first,g_ram,sizeof(first)),"foreign seat replay is deterministic");
+  MmxBossRushForeignSetController(23,0);MmxCartExtensionClear();
+  check(!memcmp(cart->rom+0x380000,cart->rom+0x180000,0x8000),"clearing restores the mirrored bank");
+  puts("MMX BOSS RUSH FOREIGN SPIKE CHECKS PASSED");
 }
 static uint8_t rush_extension_value;
 static void rush_extension_reset(uint8_t *ram) {(void)ram;rush_extension_value=0;}
@@ -1054,6 +1116,7 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
   int player_screen_x=(int)eagle_word(g_ram+0xbad)-(int)eagle_word(g_ram+0x1e4d);
   check(player_screen_x>=104 && player_screen_x<=160,
       "the encounter begins with the player near the middle of the view");
+  if(getenv("MMX_BOSS_RUSH_FOREIGN_SPIKE_TEST")) {rush_foreign_spike_checks(start,cap);return;}
   if(getenv("MMX_BOSS_RUSH_ARENA_TEST")) {
     MmxBossRushState s=MmxBossRushGetState();
     memset(s.bosses,0,sizeof(s.bosses));memset(s.owner,0,sizeof(s.owner));

@@ -6,8 +6,10 @@
 static uint8_t *roms[2];
 static size_t sizes[2];
 
-/* No X2/X3 body is implemented yet; Tunnel Rhino (id 23) is the pilot. */
-static const uint32_t implemented=0;
+/* A body is implemented once its relocated controller is registered.
+ * Tunnel Rhino (id 23) is the pilot. */
+static uint32_t implemented;
+static uint32_t controllers[MMX_RUSH_ROSTER];
 
 static void publish(void) {MmxBossRushSetOffered(MmxBossRushForeignOffered());}
 bool MmxBossRushForeignLoad(unsigned game,const char *rom,char *error,size_t error_size) {
@@ -30,6 +32,15 @@ const uint8_t *MmxBossRushForeignRom(unsigned game,size_t *size) {
   return roms[game-2];
 }
 uint32_t MmxBossRushForeignImplemented(void) {return implemented;}
+bool MmxBossRushForeignSetController(unsigned id,uint32_t controller) {
+  if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || controller>0xffffff) return false;
+  controllers[id]=controller;
+  if(controller) implemented|=1u<<id; else implemented&=~(1u<<id);
+  publish();return true;
+}
+uint32_t MmxBossRushForeignController(unsigned id) {
+  return id<MMX_RUSH_ROSTER?controllers[id]:0;
+}
 uint32_t MmxBossRushForeignOffered(void) {
   uint32_t mask=MMX_RUSH_X1_MASK;
   if(MmxBossRushForeignReady(2)) mask|=implemented&MMX_RUSH_X2_MASK;
