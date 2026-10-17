@@ -1,5 +1,5 @@
 #include "mmx_boss_rush_foreign.h"
-#include "mod_runtime.h"
+#include "mmx_mod_constructor.h"
 #include "recomp_launcher.h"
 #include "sdl_compat.h"
 #include <stdio.h>

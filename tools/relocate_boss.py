@@ -86,8 +86,9 @@ PLAYER_STATES = {0x0c: 0x0c, 0x0e: 0x0e, 0x12: 0x0e, 0x1e: 0x1e, 0x74: 0x74}
 # 16-bit immediates that are RAM object pointers.
 IMMEDIATE = {0x09d8: 0x0ba8}
 
-# X1 bank $86 padding ($FA44-$FFFF is $FF fill in the USA ROM).
-PAD_SHIMS, PAD_DATA, PAD_ZERO = 0x86fa80, 0x86fb00, 0x86fe00
+# X1 bank $86 padding ($FA44-$FFFF is $FF fill in the USA ROM). $FF80-$FFFF
+# holds the weapon/saber collision tables, so the zero area ends below it.
+PAD_SHIMS, PAD_DATA, PAD_ZERO = 0x86fa80, 0x86fb00, 0x86fd80
 
 
 class Boss:
@@ -230,7 +231,7 @@ def build(rom, boss):
                 patch(3, target)
         elif md in ('long', 'long,x'):
             if v in ZERO_LONG:
-                patch(3, PAD_ZERO | (v & 0x1ff))
+                patch(3, PAD_ZERO + (v & 0x1ff))
             elif bank_map(v) is not None:
                 if bank_map(v) != v:
                     patch(3, bank_map(v))
@@ -271,7 +272,7 @@ def build(rom, boss):
                                 patches.append((bank_map(at) + 1, 1, cmp.value, boss.flinch[cmp.value]))
                         at = (at & 0xff0000) | ((at + cmp.size) & 0xffff)
             elif v in ZERO:
-                patch(2, (PAD_ZERO & 0xffff) | (v & 0x1ff))
+                patch(2, (PAD_ZERO & 0xffff) + (v & 0x1ff))
             else:
                 errors.append(f'${a:06X}: unclassified RAM ${v:04X} ({name})')
         elif md in ('immm', 'immx') and insn.size == 3 and v in IMMEDIATE:

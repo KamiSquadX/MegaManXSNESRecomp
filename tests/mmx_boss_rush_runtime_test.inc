@@ -8,6 +8,9 @@
 #include "mmx_weapon_combat.h"
 #include "mmx_source_assets.h"
 #include "host_paths.h"
+#include "mod_runtime.h"
+#include "recomp_launcher.h"
+#include "saber/mmx_saber_plugin.h"
 #include <stdlib.h>
 #include "mmx_wide_policy.h"
 
@@ -1006,6 +1009,7 @@ static void rush_projectile_defeat(unsigned seat,unsigned weapon) {
 }
 #include "mmx_boss_rush_coop_combat_test.inc"
 static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual,size_t cap) {
+  rush_rhino_launcher();
   const char *coop_assets=getenv("MMX_BOSS_RUSH_COOP");
   const char *zero_assets=getenv("MMX_BOSS_RUSH_ZERO");
   if(zero_assets) {

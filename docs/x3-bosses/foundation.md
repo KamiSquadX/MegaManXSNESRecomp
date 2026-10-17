@@ -119,10 +119,15 @@ that bank. Rhino therefore runs with X1's `$86`:
 | `$33`, `$38`, `$34`, `$32` (X3 `$13`, `$08`, `$04`, `$02`) | palette helpers, drill class `$26`, X3 animation/motion/overlap helpers |
 | `$86:FA80`-`$FAFF` | shims (`RTL`, finished fade, resume combat, delete, class init) |
 | `$86:FB00`-`$FBB2` | his `$86` tables: body/drill hitboxes, drill spawn tables, angle table |
-| `$86:FE00`-`$FFFF` | zero/sink area for X3-only globals |
+| `$86:FD80`-`$FF7F` | zero/sink area for X3-only globals (`$86:FD80` + low 9 bits) |
+| `$86:FF80`-`$FFFF` | not ours: X1 weapon, saber-wave, Zero and saber collision tables |
 
 All copied banks sit in X1's unused `$30`-`$3F` padding; the `$86` tail is
-`$FF` padding in the USA ROM. Clearing restores both.
+`$FF` padding in the USA ROM. Clearing restores both. The patch window
+stops at `$86:FF7F`: the zero area used to cover `$FE00`-`$FFFF`, so it
+wiped the saber hitboxes (Saber Zero's slash did 0) and, as X, the
+weapon code's `$FF` fill reached Rhino's X3 globals (he froze after one
+frame).
 
 **Classification** (anything else fails generation):
 
@@ -249,11 +254,36 @@ projectiles with those colors.
 `$09CC` at six scene-loop sites; X1 does the same with `$0B9B` and `$0B9C`,
 so the `+$1D0` mapping holds.
 
-**Not done** (why he is preview-only, `MMX_BOSS_RUSH_PREVIEW=1`):
+**Unlocked (2026-10-17).** Rhino is offered to normal Boss Rush runs once
+the X3 Mavericks pack has loaded the X3 ROM; `MMX_BOSS_RUSH_PREVIEW` is no
+longer needed for him.
+
+**Every playable character.** The launcher-driven fixture
+(`MMX_BOSS_RUSH_RHINO_CHARACTER` = `x`, `zero`, `modern` or `saber`) passes
+for X, Zero, Modern Zero and Saber Zero: buster and slash damage, his
+Acid Burst flinch, drill deflects and the drill-charge pin. Relocated bosses
+stay character-agnostic by relying only on what every character shares:
+
+- the player object at `$0BA8` (X3 `$09D8` is patched to it), its position,
+  HP and the states `$0C` death, `$0E` hurt and `$1E` scripted lock;
+- attacks that reach enemies through X1's collision and the `$86:EF37`
+  damage rows (Zero's buster and saber both tag `$1228` shots);
+- nothing in `$86:FF80`-`$FFFF`, which the characters' collision tables use.
+
+A new character that keeps these works with every relocated boss; one that
+does not needs its own entry in this list and a run of the fixture.
+
+**Not done:**
 
 - Extra X1/X2 weaknesses (assigned once all 24 bosses exist; see below).
-- Netplay with relocated bodies is untested; preview is a local setting and
-  must not differ between peers.
+- Netplay with relocated bodies is untested.
+
+**MSVC plugin registration (framework issue).** In Visual Studio builds no
+mod plugin registered (the launcher reported "The executable does not
+provide this trusted plugin"): MSVC drops snesrecomp's unreferenced *static*
+`.CRT$XCU` pointer. `src/mods/mmx_mod_constructor.h` redefines
+`SNES_MOD_CONSTRUCTOR` with an external pointer plus a `/include` linker
+directive; the proper fix belongs in snesrecomp's `mod_runtime.h`.
 
 ## Remaining foundation pieces
 

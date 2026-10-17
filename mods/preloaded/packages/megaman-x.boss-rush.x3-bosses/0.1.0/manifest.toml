@@ -15,7 +15,7 @@ rom_sha256 = "b8f70a6e7fb93819f79693578887e2c11e196bdf1ac6ddc7cb924b1ad0be2d32"
 [[feature]]
 id = "bosses"
 name = "X3 Mavericks in Boss Rush"
-description = "Mixes ported X3 Mavericks into Boss Rush alongside X1's. Requires Boss Rush. No X3 Maverick is playable yet in this build."
+description = "Mixes ported X3 Mavericks into Boss Rush alongside X1's, using their original code, art and sounds from your X3 ROM. Requires Boss Rush. Available now: Tunnel Rhino."
 group = "Game Modes"
 default_enabled = false
 

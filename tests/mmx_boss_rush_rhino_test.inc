@@ -29,10 +29,12 @@ static unsigned rush_rhino_art_pixels(const uint32_t *pixels,unsigned object,uns
  * his relocated weakness test made him flinch, and his profile row then.
  * page 0 fires X1 weapon `weapon` (0 = buster); pages 1/2 fire that loaded
  * source pack's weapon through its own selection, as a player would.
- * profile: force a row before firing (0 = drill-charge deflect), or -1. */
+ * profile: force a row before firing (0 = drill-charge deflect), or -1.
+ * button: the character's control for this attack (Saber Zero fires the
+ * buster/specials with X and swings with Y; the others fire with Y). */
 typedef struct RhinoHit {unsigned damage;bool flinched;unsigned profile;} RhinoHit;
 static RhinoHit rush_rhino_shoot(uint8_t *snapshot,size_t size,unsigned object,unsigned page,
-                                 unsigned weapon,int profile) {
+                                 unsigned weapon,int profile,uint16_t button) {
   check(RtlLoadSnapshotFromMemory(snapshot,size),"Rhino weakness case restores combat");
   MmxBossRushState s=MmxBossRushGetState();
   unsigned penguin=s.bosses[0].object;RhinoHit result={0,false,0};
@@ -51,7 +53,8 @@ static RhinoHit rush_rhino_shoot(uint8_t *snapshot,size_t size,unsigned object,u
       if(profile>=0) g_ram[object+0x28]=(uint8_t)profile;
     }
     g_ram[penguin+5]=(uint8_t)(s.camera_x-128);g_ram[penguin+6]=(uint8_t)((s.camera_x-128)>>8);
-    g_ram[0xbad]=(uint8_t)(s.camera_x+100);g_ram[0xbae]=(uint8_t)((s.camera_x+100)>>8);
+    /* Close enough for melee swings; ranged shots are re-centered below. */
+    g_ram[0xbad]=(uint8_t)(s.camera_x+136);g_ram[0xbae]=(uint8_t)((s.camera_x+136)>>8);
     g_ram[0xbb0]=(uint8_t)cy;g_ram[0xbb1]=(uint8_t)(cy>>8);
     g_ram[0xbaa]=g_ram[0xbab]=g_ram[0xc2d]=0;g_ram[0xbb9]&=~64u;g_ram[0xbdb]=(uint8_t)(page?0:weapon*2);
     for(unsigned d=0xe68;d<0x1628;d+=64) if(d<0x1228 || d>=0x1428) {
@@ -68,7 +71,7 @@ static RhinoHit rush_rhino_shoot(uint8_t *snapshot,size_t size,unsigned object,u
       c.shots[i].y=(int32_t)((g_ram[object+8]|g_ram[object+9]<<8)<<8);
     }
     MmxWeaponsSetCombatState(c);
-    frame(t%90==0 && !hit?SNES_PAD_Y:0);rush_keep_players_alive();
+    frame(t%90==0 && !hit?button:0);rush_keep_players_alive();
     unsigned hp=g_ram[object+0x27]&127;
     if(!hit && hp<start_hp) {hit=true;result.damage=start_hp-hp;}
     if(hit) {
@@ -80,26 +83,105 @@ static RhinoHit rush_rhino_shoot(uint8_t *snapshot,size_t size,unsigned object,u
   }
   return result;
 }
+/* Which character the fixture plays: x (default), zero, modern or saber. */
+static const char *rush_rhino_character(void) {
+  const char *c=getenv("MMX_BOSS_RUSH_RHINO_CHARACTER");return c && *c?c:"x";
+}
 static void rush_rhino_weakness_checks(uint8_t *snapshot,size_t size,unsigned object,const char *x3) {
-  RhinoHit buster=rush_rhino_shoot(snapshot,size,object,0,0,-1);
-  RhinoHit torpedo=rush_rhino_shoot(snapshot,size,object,0,1,-1);
-  RhinoHit deflect=rush_rhino_shoot(snapshot,size,object,0,0,0);
-  /* Acid Burst needs the X3 weapon pack, built from the same X3 ROM. */
-  char cache[512],error[512];
-  check(snesrecomp_exe_dir_path("rhino-x3-weapons.bin",cache,sizeof(cache)) &&
-      MmxSourceAssetsBuild(x3,3,0,cache,error,sizeof(error)) && MmxWeaponsLoadPage(cache,2),
-      "the X3 weapon pack loads for Rhino's weakness");
-  MmxZeroRegisterHooks();
-  RhinoHit acid=rush_rhino_shoot(snapshot,size,object,2,1,-1);
-  MmxWeaponsCancelShots(g_ram);MmxWeaponsDisable();
-  fprintf(stderr,"rhino hits: buster=%u/%u torpedo=%u/%u acid=%u/%u row=%u deflect=%u\n",
-      buster.damage,buster.flinched,torpedo.damage,torpedo.flinched,acid.damage,acid.flinched,
-      acid.profile,deflect.damage);
-  check(buster.damage==1 && !buster.flinched,"the buster deals Rhino's ordinary damage");
+  const char *who=rush_rhino_character();
+  bool saber=!strcmp(who,"saber"),x=!strcmp(who,"x");
+  uint16_t fire=saber?SNES_PAD_X:SNES_PAD_Y;
+  /* Modern Zero's Fire with the buster selected is its saber swing. */
+  RhinoHit buster=rush_rhino_shoot(snapshot,size,object,0,0,-1,fire);
+  RhinoHit deflect=rush_rhino_shoot(snapshot,size,object,0,0,0,fire);
+  RhinoHit torpedo={1,false,0},slash={1,false,0},slash_deflect={0,false,0};
+  if(x) torpedo=rush_rhino_shoot(snapshot,size,object,0,1,-1,fire);
+  if(saber) {
+    slash=rush_rhino_shoot(snapshot,size,object,0,0,-1,SNES_PAD_Y);
+    slash_deflect=rush_rhino_shoot(snapshot,size,object,0,0,0,SNES_PAD_Y);
+  }
+  /* Acid Burst needs the X3 weapon pack, built from the same X3 ROM (the
+   * launcher-driven runs already enabled it). */
+  bool own_pack=!MmxWeaponsPageEnabled(2);
+  if(own_pack) {
+    char cache[512],error[512];
+    check(snesrecomp_exe_dir_path("rhino-x3-weapons.bin",cache,sizeof(cache)) &&
+        MmxSourceAssetsBuild(x3,3,0,cache,error,sizeof(error)) && MmxWeaponsLoadPage(cache,2),
+        "the X3 weapon pack loads for Rhino's weakness");
+    MmxZeroRegisterHooks();
+  }
+  RhinoHit acid=rush_rhino_shoot(snapshot,size,object,2,1,-1,fire);
+  MmxWeaponsCancelShots(g_ram);
+  if(own_pack) MmxWeaponsDisable();
+  fprintf(stderr,"rhino hits (%s): buster=%u/%u torpedo=%u/%u slash=%u/%u acid=%u/%u row=%u deflect=%u/%u\n",
+      who,buster.damage,buster.flinched,torpedo.damage,torpedo.flinched,slash.damage,slash.flinched,
+      acid.damage,acid.flinched,acid.profile,deflect.damage,slash_deflect.damage);
+  check(buster.damage>=1 && !buster.flinched,"the character's basic attack deals ordinary damage");
+  check(!x || buster.damage==1,"X's buster deals Rhino's ordinary damage");
   check(torpedo.damage==1 && !torpedo.flinched,"Homing Torpedo is not one of Rhino's weaknesses");
+  check(slash.damage>=1 && !slash.flinched,"Saber Zero's slash deals ordinary damage");
   check(acid.damage==3 && acid.flinched,"Acid Burst is Rhino's weakness and makes him flinch");
   check(acid.profile==5,"Rhino's weakness flinch is invulnerable");
-  check(!deflect.damage,"his drill-charge row deflects shots");
+  check(!deflect.damage && !slash_deflect.damage,"his drill-charge row deflects every attack");
+}
+/* Character matrix: enable the real packages through the launcher's mod
+ * provider on an isolated catalog copy, exactly as a player would: Boss
+ * Rush, X3 Mavericks and X3 Weapons with the X3 ROM, and for the Zero
+ * characters Add Zero starting as Zero with the chosen behavior.
+ * MMX_BOSS_RUSH_LAUNCHER_ROOT, MMX_BOSS_RUSH_X1_ROM, MMX_BOSS_RUSH_X3_ROM. */
+static void rush_rhino_launcher(void) {
+  if(!getenv("MMX_BOSS_RUSH_RHINO_CHARACTER")) return;
+  const char *who=rush_rhino_character();
+  const char *root=getenv("MMX_BOSS_RUSH_LAUNCHER_ROOT"),*x1=getenv("MMX_BOSS_RUSH_X1_ROM"),
+      *x3=getenv("MMX_BOSS_RUSH_X3_ROM");
+  check(root && x1 && x3,"character matrix receives a catalog root and both ROMs");
+  check(snes_mod_runtime_initialize_c(root,"megaman-x-us",
+      "b8f70a6e7fb93819f79693578887e2c11e196bdf1ac6ddc7cb924b1ad0be2d32"),"Rhino catalog parses");
+  const RecompLauncherCModProvider *p=snes_mod_runtime_launcher_provider_c();
+  check(p && p->feature_enable && p->feature_set_option && p->feature_resource_set_path && p->commit,
+      "Rhino catalog exposes the launcher provider");
+  const char *bosses="megaman-x.boss-rush.x3-bosses";
+  bool rush=p->feature_enable(p->ctx,"megaman-x.mode.boss-rush","boss_rush",1);
+  bool mavericks=p->feature_enable(p->ctx,bosses,"bosses",1);
+  bool rom=p->feature_resource_set_path(p->ctx,bosses,"bosses","x3-rom",x3);
+  bool weapons=p->feature_enable(p->ctx,"megaman-x.weapons.x3","weapons",1);
+  if(!(rush && mavericks && rom && weapons))
+    fprintf(stderr,"rhino launcher: rush=%u mavericks=%u rom=%u weapons=%u error=%s\n",rush,mavericks,
+        rom,weapons,snes_mod_runtime_last_error_c());
+  check(rush && mavericks && rom && weapons,"launcher enables Boss Rush, X3 Mavericks and X3 weapons");
+  bool zero=strcmp(who,"x")!=0;
+  if(zero) {
+    const char *behavior=!strcmp(who,"modern")?"modern":!strcmp(who,"saber")?"saber":"x3";
+    const char *package="megaman-x.character.zero";
+    check(p->feature_enable(p->ctx,package,"zero",1) &&
+        p->feature_set_option(p->ctx,package,"zero","start","zero") &&
+        p->feature_set_option(p->ctx,package,"zero","behavior",behavior),
+        "launcher selects Add Zero, starting as Zero with the chosen behavior");
+    check(p->feature_enable(p->ctx,MMX_SABER_SETTINGS_PACKAGE,MMX_SABER_SETTINGS_FEATURE,
+        !strcmp(who,"saber")),"Saber Zero settings follow the behavior");
+  }
+  bool committed=p->commit(p->ctx,x1);
+  if(!committed) {
+    fprintf(stderr,"rhino launcher commit: %s\n",p->last_error?p->last_error(p->ctx):snes_mod_runtime_last_error_c());
+    for(int i=0;p->feature_count && i<p->feature_count(p->ctx);++i) {
+      RecompLauncherCModFeature f;memset(&f,0,sizeof(f));
+      if(!p->feature_get(p->ctx,i,&f)) continue;
+      for(int k=0;p->diagnostic_count && k<p->diagnostic_count(p->ctx,f.package_id,f.id);++k) {
+        RecompLauncherCModDiagnostic d;memset(&d,0,sizeof(d));
+        if(p->diagnostic_get(p->ctx,f.package_id,f.id,k,&d))
+          fprintf(stderr,"  %s/%s: [%d] %s (related %s/%s)\n",f.package_id,f.id,d.severity,
+              d.message,d.related_package_id,d.related_feature_id);
+      }
+    }
+  }
+  check(committed,"the character matrix plan commits");
+  snes_mod_runtime_activate_plugins_c();
+  check(MmxBossRushForeignReady(3) && MmxWeaponsPageEnabled(2),
+      "the shared X3 ROM reaches X3 Mavericks and X3 weapons");
+  if(zero) check(MmxZeroEnabled() && MmxZeroActive(),"the run starts as Zero");
+  if(!strcmp(who,"modern")) check(MmxZeroModern(),"Modern Zero is active");
+  if(!strcmp(who,"saber")) check(MmxSaberEnabled(),"Saber Zero is active");
+  fprintf(stderr,"rhino character matrix: %s\n",who);
 }
 /* Start Rhino's drill charge (behavior 2) at X and follow the pin and his
  * private palette: the carrier catches X, X is locked in $1E during his
@@ -164,7 +246,9 @@ static void rush_rhino_pin_palette_checks(uint8_t *snapshot,size_t size,unsigned
  * seat 1 beside a native Penguin. MMX_BOSS_RUSH_X3_ROM names the X3 ROM. */
 static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
   char error[256];
-  check(x3 && MmxBossRushForeignLoad(3,x3,error,sizeof(error)),"X3 ROM loads for the Rhino fixture");
+  /* The character matrix loads the pack through the launcher already. */
+  check(x3 && (MmxBossRushForeignReady(3) || MmxBossRushForeignLoad(3,x3,error,sizeof(error))),
+      "X3 ROM loads for the Rhino fixture");
   check(MmxBossRushForeignBuild(error,sizeof(error)),"Rhino relocates into the cart padding");
   if(error[0]) fprintf(stderr,"rhino build: %s\n",error);
   check(MmxBossRushForeignController(23)==0xbfe5e4 && MmxBossRushForeignChild(23,0x26)==0xb8ab9b,
@@ -189,9 +273,7 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
     }
   }
   check(!MmxBossRushAudioForeignClip(23,0x5a,NULL),"only Rhino's own effects are cached");
-  check(!(MmxBossRushOffered()&(1u<<23)),"unfinished Rhino stays out of normal runs");
-  MmxBossRushForeignSetPreview(true);
-  check(MmxBossRushOffered()&(1u<<23),"developer preview offers the relocated Rhino");
+  check(MmxBossRushOffered()&(1u<<23),"a loaded X3 pack offers Tunnel Rhino to normal runs");
   MmxBossRushState s=MmxBossRushGetState();
   memset(s.bosses,0,sizeof(s.bosses));memset(s.owner,0,sizeof(s.owner));
   memset(g_ram+0xe68,0,0x3c0);memset(g_ram+0x1428,0,0x8e0);s.queued=0;
@@ -301,7 +383,7 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
    * still present. Require a new generation instead of a different id. */
   check(!leftovers && s.bosses[1].phase && s.bosses[1].generation!=generation,
       "Rhino and his drills are cleaned up and replaced");
-  MmxBossRushForeignUnload();MmxBossRushForeignSync();MmxBossRushForeignSetPreview(false);
+  MmxBossRushForeignUnload();MmxBossRushForeignSync();
   check(!MmxBossRushForeignController(23) && !(MmxBossRushOffered()&(1u<<23)),
       "unloading the X3 pack removes Rhino");
   puts("MMX BOSS RUSH RHINO CHECKS PASSED");

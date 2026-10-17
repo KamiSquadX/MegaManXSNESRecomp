@@ -85,7 +85,7 @@ uint32_t MmxBossRushForeignChild(unsigned id,uint8_t kind) {
 }
 /* Relocated bodies whose art, sound and weaknesses are finished. Others run
  * only in developer preview (MMX_BOSS_RUSH_PREVIEW=1 or the test hook). */
-static const uint32_t playable=0;
+static const uint32_t playable=1u<<23; /* Tunnel Rhino */
 static int preview=-1;
 void MmxBossRushForeignSetPreview(bool enabled) {preview=enabled;publish();}
 uint32_t MmxBossRushForeignOffered(void) {

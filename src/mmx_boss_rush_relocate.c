@@ -54,7 +54,7 @@ static const MmxRelocBoss kBosses[]={
    0x33f7d6,0x33f7fc},
 };
 /* Zero/sink area for X3-only globals: reads see zero, writes hit ROM. */
-enum { ZERO_AREA=0x86fe00, ZERO_SIZE=0x200 };
+enum { ZERO_AREA=0x86fd80, ZERO_SIZE=0x200 };
 
 static bool source(const uint8_t *rom,size_t size,uint32_t address,size_t n,const uint8_t **out) {
   if((address&0xffff)<0x8000) return false;
