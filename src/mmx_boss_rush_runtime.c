@@ -206,7 +206,7 @@ static void boss_hook(CpuState *cpu,uint32_t pc) {
       return;
     }
   }
-  if(at==0x028297 || at==0x02829d || at==0x03b192) {
+  if((at==0x028297 || at==0x02829d || at==0x03b192) && MmxBossRushNative(s.bosses[owner].id)) {
     /* $82:827D initializes OBJ metadata from the current stage's $7F
      * allocation tables. Cross-stage bodies otherwise save palette zero
      * as their normal palette ($33), so their native hit flash cannot toggle.
@@ -512,6 +512,9 @@ void MmxBossRushFrame(uint8_t *r,uint16_t input) {
         for(unsigned d=0xe68;d<0x1228;d+=64) if(!r[d]) {object=d;break;}
         if(!object) continue;
         int id=MmxBossRushNextBoss();if(id<0) continue;
+        /* X2/X3 bodies are offered only once implemented; never write an X1
+         * class byte for them. */
+        if(!MmxBossRushNative((unsigned)id)) continue;
         if(!MmxBossRushAssign(i,(unsigned)id,(uint16_t)object)) continue;
         s=MmxBossRushGetState();
         for(unsigned n=0;n<sizeof(globals)/sizeof(*globals);++n)

@@ -150,8 +150,10 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
   MmxZeroSetExtension(&extension);rush_extension_value=7;
   size_t n=RtlSaveSnapshotToMemory(start,cap);check(n,"combined Zero/Rush snapshot saves");
   size_t rush_bytes=sizeof(MmxBossRushState),audio_bytes=sizeof(MmxBossRushAudioState),
-      visual_bytes=sizeof(MmxBossRushVisualState);
-  size_t tail=n-MMX_ZERO_EXTENSION_STATE_BYTES-rush_bytes-audio_bytes-visual_bytes;
+      visual_bytes=sizeof(MmxBossRushVisualState),bounds_bytes=sizeof(MmxCoopViewBoundsState),
+      roster_bytes=sizeof(MmxBossRushRosterState);
+  size_t v21_bytes=MMX_ZERO_EXTENSION_STATE_BYTES+rush_bytes+audio_bytes+visual_bytes;
+  size_t tail=n-v21_bytes-bounds_bytes-roster_bytes;
   size_t chunk=0;
   for(size_t i=n-8;i>8;--i) {
     uint32_t magic;memcpy(&magic,start+i,4);
@@ -159,9 +161,11 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
   }
   check(chunk && tail>chunk,"bounded game state tail located");
   uint32_t version;memcpy(&version,start+chunk+4,4);
-  check(version==21,"combined state uses unambiguous v21");
+  check(version==23,"combined state uses v23 with the Boss Rush roster");
   MmxBossRushState original=MmxBossRushGetState();
-  for(unsigned format=0;format<5;++format) {
+  /* 0: main v18 (extension only); 1-3: Rush previews v18/v19/v20;
+   * 4: v21 extension + Rush; 5: v22 adds per-seat view bounds. */
+  for(unsigned format=0;format<6;++format) {
     memcpy(legacy,start,n);size_t length=n;
     version=format?format+17:18;
     if(!format) length=tail+MMX_ZERO_EXTENSION_STATE_BYTES; /* main v18 */
@@ -169,14 +173,19 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
       size_t bytes=rush_bytes+(format>=2?audio_bytes:0)+(format>=3?visual_bytes:0);
       memmove(legacy+tail,start+tail+MMX_ZERO_EXTENSION_STATE_BYTES,bytes);
       length=tail+bytes; /* original Rush v18/v19/v20 */
-    }
+    } else length=tail+v21_bytes+(format==5?bounds_bytes:0);
     memcpy(legacy+chunk+4,&version,4);rush_extension_value=99;
     check(RtlLoadSnapshotFromMemory(legacy,length),"main/preview/current memory state imports");
-    check(rush_extension_value==(format==0 || format==4?7:0),
+    check(rush_extension_value==(format==0 || format>=4?7:0),
         "only main/current states restore the Zero extension blob");
     MmxBossRushState loaded=MmxBossRushGetState();
     check(format?!memcmp(&original,&loaded,sizeof(loaded)):loaded.mode==MMX_RUSH_OFF,
         "old main v18 has no Rush state; each preview keeps its queue");
+    if(format) {
+      MmxBossRushRosterState imported=MmxBossRushRosterGetState();
+      check(imported.available==MMX_RUSH_X1_MASK && MmxBossRushRosterMatches(&loaded,&imported),
+          "pre-roster states import an X1-only roster");
+    }
     if(!format) {
       FILE *f=fopen("rush-main-v18.sav","wb");check(f!=NULL,"main v18 file opens");
       check(fwrite(legacy,1,length,f)==length && !fclose(f),"main v18 file writes");

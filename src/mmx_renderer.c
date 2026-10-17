@@ -1916,8 +1916,10 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
         !(menu && s->object>=0x1928 && s->object<=0x1988)) {
       unsigned owner=frame_rush.owner[(s->object-0xe68)/32];
       if(owner && owner<=2) {
-        const MmxSpriteAsset *private=MmxRenderAssetsRushObjectSprite(frame.ram,s->object,
-            kMmxBossRushBosses[frame_rush.bosses[owner-1].id].stage,s->animation);
+        /* Only X1 bodies have native stage art; X2/X3 bodies draw their own. */
+        unsigned id=frame_rush.bosses[owner-1].id;
+        const MmxSpriteAsset *private=MmxBossRushNative(id)?MmxRenderAssetsRushObjectSprite(frame.ram,s->object,
+            kMmxBossRushBosses[id].stage,s->animation):NULL;
         if(private) a=private;
         unsigned seat=owner-1;
         if(private && s->object==frame_rush.bosses[seat].object &&
@@ -2288,7 +2290,8 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
   if(rush_hud && frame_rush.mode==MMX_RUSH_PLAYING) {
     char count[32];snprintf(count,sizeof(count),"DEFEATED %u",frame_rush.defeated);
     rush_native_text(out,view,view.width/2-(int)strlen(count)*4,208,count,7);
-    static const char *const labels[]={"CP","SM","AA","LO","BK","SC","SE","FM"};
+    static const char *const labels[MMX_RUSH_ROSTER]={"CP","SM","AA","LO","BK","SC","SE","FM",
+      "CS","BC","MM","WG","OO","WS","MC","FS","TS","BH","VC","CC","NT","GB","BB","TR"};
     for(unsigned i=0;i<2;++i) if(frame_rush.bosses[i].phase)
       rush_native_text(out,view,view.width-40+(int)i*16,96,labels[frame_rush.bosses[i].id],7);
   }
