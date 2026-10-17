@@ -3,6 +3,7 @@
 #include "mod_audio.h"
 #include "mmx_boss_rush_foreign.h"
 #include "mmx_cart_extension.h"
+#include "mmx_boss_rush_foreign_art.h"
 #include "mmx_wide_policy.h"
 
 static void rush_keep_players_alive(void) {

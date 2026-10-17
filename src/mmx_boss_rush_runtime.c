@@ -308,8 +308,8 @@ static void foreign_dispatch_hook(CpuState *cpu,uint32_t pc) {
   stack_push(cpu,pc>>16,1);stack_push(cpu,MMX_RUSH_STUB_RTS-1,2);
   interp_bridge_pre_opcode_redirect(controller);
 }
-/* The enemy-projectile list dispatches the same way at $80:D48A
- * (JMP ($F761,x)). A foreign seat's own projectile classes run its
+/* The enemy-projectile list ($1428, looped from $80:D48F) dispatches the
+ * same way at $80:D4E7 (JMP ($F77D,x)). A foreign seat's own projectile classes run its
  * relocated controllers; every other projectile keeps X1's table. */
 static void foreign_projectile_hook(CpuState *cpu,uint32_t pc) {
   if(!playing() || cpu->D<0x1428 || cpu->D>=0x1628) return;
@@ -349,8 +349,8 @@ void MmxBossRushHostFrame(void) {
     registered&=interp_bridge_add_pre_opcode_hook(bosses[i],boss_hook);
   registered&=interp_bridge_add_pre_opcode_hook(0x00d544,foreign_dispatch_hook);
   registered&=interp_bridge_add_pre_opcode_hook(0x80d544,foreign_dispatch_hook);
-  registered&=interp_bridge_add_pre_opcode_hook(0x00d48a,foreign_projectile_hook);
-  registered&=interp_bridge_add_pre_opcode_hook(0x80d48a,foreign_projectile_hook);
+  registered&=interp_bridge_add_pre_opcode_hook(0x00d4e7,foreign_projectile_hook);
+  registered&=interp_bridge_add_pre_opcode_hook(0x80d4e7,foreign_projectile_hook);
   static bool warned;
   if(!registered && !warned) {warned=true;fprintf(stderr,"[mmx-rush] native hook registration failed: interpreter hook table is full\n");}
 #endif

@@ -2,6 +2,7 @@
 #include "mmx_boss_rush.h"
 #include "mmx_source_assets.h"
 #include "mmx_cart_extension.h"
+#include "mmx_boss_rush_foreign_art.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,11 +25,15 @@ bool MmxBossRushForeignLoad(unsigned game,const char *rom,char *error,size_t err
   if(game!=2 && game!=3) return false;
   unsigned char *image=NULL;size_t size=0;
   if(!MmxSourceRomLoad(rom,game,&image,&size,error,error_size)) return false;
+  MmxBossRushForeignArtSetRom(game,NULL,0);
   free(roms[game-2]);roms[game-2]=image;sizes[game-2]=size;
+  MmxBossRushForeignArtSetRom(game,image,size);
   dirty=true;publish();return true;
 }
 void MmxBossRushForeignUnload(void) {
-  for(unsigned i=0;i<2;++i) {free(roms[i]);roms[i]=NULL;sizes[i]=0;}
+  for(unsigned i=0;i<2;++i) {
+    MmxBossRushForeignArtSetRom(i+2,NULL,0);free(roms[i]);roms[i]=NULL;sizes[i]=0;
+  }
   memset(bodies,0,sizeof(bodies));implemented=0;
   dirty=true;publish();
 }

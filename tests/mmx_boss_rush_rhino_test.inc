@@ -1,3 +1,30 @@
+static void rush_rhino_save_ppm(const char *path,const uint32_t *pixels) {
+  FILE *f=fopen(path,"wb");check(f!=NULL,"Rhino capture opens");
+  fprintf(f,"P6\n256 224\n255\n");
+  for(unsigned i=0;i<256*224;++i) {
+    uint8_t rgb[3]={(uint8_t)(pixels[i]>>16),(uint8_t)(pixels[i]>>8),(uint8_t)pixels[i]};
+    fwrite(rgb,1,3,f);
+  }
+  check(!fclose(f),"Rhino capture writes");
+}
+/* Count pixels around an object that use the boss's own source palette. */
+static unsigned rush_rhino_art_pixels(const uint32_t *pixels,unsigned object,unsigned id) {
+  const uint16_t *colors=MmxBossRushForeignColors(id);
+  if(!colors) return 0;
+  int cx=(int)eagle_word(g_ram+object+5)-(int)eagle_word(g_ram+0x1e4d);
+  int cy=(int)eagle_word(g_ram+object+8)-(int)eagle_word(g_ram+0x1e50);
+  unsigned hits=0;
+  for(int y=cy-48;y<cy+24;++y) for(int x=cx-48;x<cx+48;++x) {
+    if(x<0 || x>=256 || y<0 || y>=224) continue;
+    uint32_t p=pixels[y*256+x];
+    for(unsigned c=1;c<16;++c) {
+      unsigned r=(colors[c]&31)*255/31,g=((colors[c]>>5)&31)*255/31,b=((colors[c]>>10)&31)*255/31;
+      int dr=(int)((p>>16)&255)-(int)r,dg=(int)((p>>8)&255)-(int)g,db=(int)(p&255)-(int)b;
+      if(dr*dr+dg*dg+db*db<=48) {++hits;break;}
+    }
+  }
+  return hits;
+}
 /* Tunnel Rhino's original X3 code, relocated from the user's ROM, fights in
  * seat 1 beside a native Penguin. MMX_BOSS_RUSH_X3_ROM names the X3 ROM. */
 static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
@@ -46,8 +73,31 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
       if(!fighting_at) fighting_at=t;
     }
     if((g_ram[object+0x27]&127)>max_hp) max_hp=g_ram[object+0x27]&127;
+    unsigned live_drills=0,drill=0;
     for(unsigned d=0x1428;d<0x1628;d+=64)
-      if(g_ram[d] && g_ram[d+10]==0x26 && MmxBossRushOwner(d)==1) ++drill_frames;
+      if(g_ram[d] && g_ram[d+10]==0x26 && MmxBossRushOwner(d)==1) {++drill_frames;++live_drills;drill=d;}
+    static unsigned first_drill;
+    if(live_drills && !first_drill) first_drill=t;
+    static uint32_t image[256*224];
+    if(t==fighting_at+40 && fighting_at) {
+      check(MmxRendererDraw(image,(MmxRenderView){256,0,4.0/3.0},true),"Rhino combat frame renders");
+      unsigned art=rush_rhino_art_pixels(image,object,23);
+      fprintf(stderr,"rhino art pixels=%u at t=%u\n",art,t);
+      check(art>=400,"Rhino draws with his own X3 art and palette");
+      rush_rhino_save_ppm("rush-rhino-combat.ppm",image);
+    }
+    if(first_drill && t==first_drill+40 && drill) {
+      check(MmxRendererDraw(image,(MmxRenderView){256,0,4.0/3.0},true),"Rhino drill frame renders");
+      unsigned art=rush_rhino_art_pixels(image,drill,23);
+      const MmxForeignPose *dp=MmxBossRushForeignPose(23,g_ram[drill+0x16],g_ram[drill+0x17]&0x7f);
+      fprintf(stderr,"rhino drill art pixels=%u at t=%u drills=%u obj=%04x active=%02x set=%02x pose=%02x xy=%04x,%04x cam=%04x,%04x attr=%02x on=%02x layout=%s\n",
+          art,t,live_drills,drill,g_ram[drill],g_ram[drill+0x16],g_ram[drill+0x17],eagle_word(g_ram+drill+5),
+          eagle_word(g_ram+drill+8),eagle_word(g_ram+0x1e4d),eagle_word(g_ram+0x1e50),g_ram[drill+0x11],
+          g_ram[drill+0x0e],dp?"ok":"none");
+      check(g_ram[drill+0x16]==g_ram[object+0x16],"Rhino's drills run their relocated X3 controller");
+      check(art>=40,"Rhino's drills draw with his own X3 art");
+      rush_rhino_save_ppm("rush-rhino-drills.ppm",image);
+    }
   }
   s=MmxBossRushGetState();
   fprintf(stderr,"rhino fighting_at=%u behaviors=%03x x=%04x..%04x hp=%u drill-frames=%u phase=%u penguin=%u\n",

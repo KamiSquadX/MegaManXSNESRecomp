@@ -145,7 +145,7 @@ All copied banks sit in X1's unused `$30`-`$3F` padding; the `$86` tail is
   OBJ palette buffer `$0480`-`$04BF`, palette backup `$7F:CAC0`.
 
 **Dispatch.** Hooks at X1's enemy (`$80:D544`) and enemy-projectile
-(`$80:D48A`) class dispatches enter registered controllers for objects owned
+(`$80:D4E7`) class dispatches enter registered controllers for objects owned
 by a foreign seat. Rush treats a foreign body as fighting at state `$01=2`
 and dying at `$01=4`; defeat and cleanup use the normal Rush path.
 
@@ -157,11 +157,26 @@ relocated projectiles. A native Penguin fights beside him. Replay is
 byte-exact, Rush counts his defeat, and cleanup removes him and his drills.
 Unloading the pack removes him.
 
+**Art (done).** `src/mmx_boss_rush_foreign_art.c` decodes his compressed
+OBJ resource (`$1D`, record `$86:F732`), his palette (list `$3E` at
+`$86:8180`, 16 colors from `$8C:E628`) and rasterizes poses from the X3
+layout table (`$8D:8000` + sprite set) once, from the in-memory ROM. The
+renderer drops the pieces X1's sprite builder makes for foreign-owned
+objects (X1 tables cannot describe an X3 set) and draws each foreign body
+and projectile whole from its object's `+$16` set and `+$17` pose: bit 6 of
+`+$11` faces right, bits 4-5 give OBJ priority, and palette 0 in bits 1-3 is
+the native hit flash on live CGRAM. Foreign sprites draw before native
+pieces, so players and their shots stay in front. The Rhino fixture checks
+that his body and drills draw in his own palette and saves private
+`rush-rhino-combat.ppm` / `rush-rhino-drills.ppm` captures.
+
+X1's enemy-projectile actor (`$80:D4D3`/`$D4DD`, dispatch `$80:D4E7`) has a
+compiled body, so `tools/apply_boss_rush_hooks.py` now routes it through the
+interpreter during Rush; without that, X1's own projectile class `$26` ran
+his drills.
+
 **Not done** (why he is preview-only, `MMX_BOSS_RUSH_PREVIEW=1`):
 
-- Art: the X1 sprite pipeline draws his X3 sprite set with X1 tables. The
-  renderer must draw his poses from X3 resource `$1D` and layouts at
-  `$8D:9035` (see [tunnel-rhino.md](tunnel-rhino.md)).
 - Sound: all effects are shimmed silent; bank `$5D` needs the isolated SPC
   path.
 - Weaknesses: profile `$18` currently indexes X1's damage table; his
@@ -177,8 +192,8 @@ Unloading the pack removes him.
 
 - Foreign body spawn in a Rush seat: done for registered controllers (X1
   boss class byte `$02`, so class-indexed native tables stay in range).
-- Private art and palettes for foreign bodies in the renderer (decode the
-  source resource once from the in-memory ROM, as X1 bosses do).
+- Private art for foreign bodies: done for relocated bodies (pose-level;
+  bosses whose source art streams per-pose DMA will need that path).
 - Foreign sound effects through the isolated SPC renderer, using the source
   game's boss sound bank.
 - Weakness rows for foreign bodies in `src/mmx_weapon_weakness.inc`

@@ -8,6 +8,7 @@
 #include "mmx_weapon_combat.h"
 #include "mmx_coop_view.h"
 #include "mmx_boss_rush.h"
+#include "mmx_boss_rush_foreign_art.h"
 #include "mmx_boss_rush_score.h"
 #include <math.h>
 
@@ -1909,6 +1910,12 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
   bool camouflage_ready=false;
   if ((stage || frame_rush.mode==MMX_RUSH_PLAYING) && g_mmx_render_asset_repairs) for (unsigned i = 0; i < piece_count; ++i) {
     const Piece *s = &pieces[i];
+    /* X1's sprite builder read a relocated body's X3 sprite set through X1
+     * tables; those pieces are replaced whole below and never resolved. */
+    if(frame_rush.mode==MMX_RUSH_PLAYING && s->object>=0xe68 && s->object<0x1628) {
+      unsigned owner=frame_rush.owner[(s->object-0xe68)/32];
+      if(owner && owner<=2 && !MmxBossRushNative(frame_rush.bosses[owner-1].id)) continue;
+    }
     const MmxSpriteAsset *a = stage ? MmxRenderAssetsObjectSprite(frame.ram, s->object, s->animation) : NULL;
     /* The menu reuses $1928..$1988 for armor and its player preview. Other
      * still-visible boss pieces retain private art through the transition. */
@@ -1962,6 +1969,31 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
         (s->object == 0xe18 && MmxRenderAssetsRideArmorPalettePending(frame.ram,
             frame.lines[0].palette + 128 + ((s->attr >> 9) & 7) * 16)))) piece_assets[i] = a;
   }
+  /* Relocated X2/X3 bodies and their projectiles: X1's sprite builder reads
+   * their source sprite sets through X1's own layout tables, so draw them
+   * whole from the source game's poses, tiles and palette instead. */
+  typedef struct ForeignSprite {
+    const MmxForeignPose *pose;const uint16_t *colors;
+    int x,y;bool flip,flash;unsigned z;
+  } ForeignSprite;
+  ForeignSprite foreign[32];unsigned foreign_count=0;
+  if(stage && frame_rush.mode==MMX_RUSH_PLAYING) {
+    for(unsigned d=0xe68;d<0x1628 && foreign_count<32;d+=d<0x1628?64:48) {
+      if(d==0x1228) d=0x1428;
+      unsigned owner=frame_rush.owner[(d-0xe68)/32];
+      if(!frame.ram[d] || !owner || owner>2) continue;
+      unsigned id=frame_rush.bosses[owner-1].id;
+      if(MmxBossRushNative(id)) continue;
+      const MmxForeignPose *pose=MmxBossRushForeignPose(id,frame.ram[d+0x16],frame.ram[d+0x17]&0x7f);
+      const uint16_t *colors=MmxBossRushForeignColors(id);
+      if(!pose || !colors) continue;
+      unsigned attributes=frame.ram[d+0x11];
+      foreign[foreign_count++]=(ForeignSprite){pose,colors,
+          (int16_t)(word(frame.ram,d+5)-view_camera(frame.ram,0x1e4d)),
+          (int16_t)(word(frame.ram,d+8)-view_camera(frame.ram,0x1e50)),
+          (attributes&0x40)!=0,!(attributes&0x0e),((((attributes>>4)&3)*4+2)<<12)|0x680};
+    }
+  }
   int16_t crystal_ripple[224];MmxWeaponsTimeRipple(&frame_weapon_combat,crystal_ripple);
   if (frame_coop.initialized && MmxWeaponsTimePhase(&frame_coop.players[frame_coop.current^1].combat)==1 &&
       MmxWeaponsTimePhase(&frame_weapon_combat)!=1)
@@ -1993,6 +2025,21 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       Piece s = waiting[i];
       const MmxSpriteAsset *asset = s.animation == 0x53 ? waiting_zero : NULL;
       sprite(&p, r, s.x, s.y, s.attr, s.size, y, view, objects, true, asset, s.tile, object_colors, true, false, false);
+    }
+    for(unsigned f=0;f<foreign_count;++f) {
+      const ForeignSprite *fs=&foreign[f];const MmxForeignPose *pose=fs->pose;
+      int row=y-(fs->y+pose->top);
+      if(row<0 || row>=pose->height) continue;
+      for(int col=0;col<pose->width;++col) {
+        unsigned pixel=pose->pixels[row*pose->width+col];
+        /* Source art faces left; bit 6 of +$11 faces right. */
+        int dx=fs->x+(fs->flip?-(pose->left+col)-1:pose->left+col)+view.extra;
+        if(!pixel || dx<0 || dx>=view.width) continue;
+        if(fs->flash) {
+          /* Palette zero is the native hit flash; keep it on live CGRAM. */
+          objects[dx]=(uint16_t)((fs->z&~255u)|(128+pixel));object_colors[dx]=-1;
+        } else {objects[dx]=(uint16_t)(fs->z|pixel);object_colors[dx]=fs->colors[pixel];}
+      }
     }
     bool replaced[128] = {false};
     bool zero_drawn[2] = {false,false};
@@ -2036,6 +2083,11 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       }
       if(frame_rush.mode==MMX_RUSH_PLAYING && !frame.expand && s.object>=0xe68 && s.object<0x1d08 &&
           frame_rush.owner[(s.object-0xe68)/32] && !oam_match) continue;
+      /* Relocated bodies are drawn above from their own source art. */
+      if(foreign_count && frame_rush.mode==MMX_RUSH_PLAYING && s.object>=0xe68 && s.object<0x1628) {
+        unsigned owner=frame_rush.owner[(s.object-0xe68)/32];
+        if(owner && owner<=2 && !MmxBossRushNative(frame_rush.bosses[owner-1].id)) continue;
+      }
       /* Match original OAM before reprojection. HUD and native script panels
        * keep screen coordinates; world pieces use the selected peer origin. */
       if(stage) {s.x-=view_dx;s.y-=view_dy;}
