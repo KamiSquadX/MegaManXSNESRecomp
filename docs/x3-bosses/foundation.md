@@ -191,10 +191,44 @@ X1's `$1C00` signature and `$C3` activity byte are not used for X3; an X3
 clip ends after 4,096 silent samples. `MMX_BOSS_RUSH_RHINO_WAV=1` writes
 private listening copies of the rendered clips.
 
+**Weakness (done: his original X3 weakness only).** X1's damage helper
+indexes `$86:EF37` by the target's profile (`+$28`) and the shot's class;
+rows 6-13 are the Mavericks, row 0 deflects every shot and row 5 takes no
+damage. The relocation maps Rhino's X3 profiles to X1 rows at each
+`LDA #x; STA $28` and in his class-init shim: normal `$18` → row 10
+(Kuwanger's), drill charge `$0D` → row 0 (deflect, body and drills), flinch
+`$01` → row 5. X3's last-hit class `$1F2F` is X1's `$1F1D`, and the compare
+chain after it (Acid Burst parts `$07/$10/$18/$21`) becomes Torpedo's
+reaction classes `$0E/$17`.
+
+Rush hooks the damage helper at `$84:9E1D` (damage column) and `$84:9E3A`
+(reaction class) for relocated bodies: X3 Acid Burst takes row 10's
+weakness column (3 normal, 4 charged) and reports the Torpedo reaction, so
+his own code flinches; X1 Homing Torpedo is moved to an ordinary column so
+the borrowed row adds no weakness. The X2/X3 weapon pack no longer applies
+its X1-class table to relocated bodies (Rhino keeps Penguin's class byte
+for range safety) and always defers to their native row. Rules live per
+boss in `src/mmx_boss_rush_relocate.c` (`MmxBossRushWeakness`, keyed by
+page/weapon from `MmxWeaponsShotIdentity`).
+
+Measured with a real Acid Burst from the X3 pack built from the same ROM:
+buster 1, Homing Torpedo 1 (no flinch), Acid Burst 3 with flinch into the
+invulnerable row, drill-charge row deflects.
+
+**Weakness plan (owner, 2026-10-17).** Once all 24 bosses exist, every boss
+gets three weaknesses: its original one plus one from each other game. This
+also applies to mini-bosses that have a weakness in X1-X3. The owner will
+assign the extra weapons for all 24; until then relocated bosses keep only
+their original weakness. Weak points (Flame Mammoth's trunk, Launch
+Octopus's arms with Boomerang Cutter) will extend to X2/X3 weapons of a
+similar nature. A later optional mod will add configurable weakness-hit
+cues: Mega Man ZX weak-point graphic, sound and red health-bar flash
+together, only the ZX sound, only the ZX graphic, or the enemy flashing red
+instead of white.
+
 **Not done** (why he is preview-only, `MMX_BOSS_RUSH_PREVIEW=1`):
 
-- Weaknesses: profile `$18` currently indexes X1's damage table; his
-  Acid Burst flinch (`$1F2F`) is disabled.
+- Extra X1/X2 weaknesses (assigned once all 24 bosses exist; see below).
 - Pinning: X3 player-state values (`$12`, `$1E`, `$74`) are compared against
   X1 states, so the drill-charge pin never triggers.
 - Palette effects (drill-charge flashing) are sunk.
@@ -211,5 +245,5 @@ private listening copies of the rendered clips.
 - Foreign sound effects: done for relocated X3 bodies (X2's driver still
   needs checking). The shared `$86` shim and table area is laid out per
   boss today; a second relocated boss needs its own region.
-- Weakness rows for foreign bodies in `src/mmx_weapon_weakness.inc`
-  covering X1, X2 and X3 weapons.
+- Weaknesses for relocated bodies: original weakness done for Rhino; the
+  owner's X1/X2/X3 assignments come after all 24 bosses.

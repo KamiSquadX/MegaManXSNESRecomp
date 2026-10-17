@@ -5,6 +5,9 @@
 #include "mmx_cart_extension.h"
 #include "mmx_boss_rush_foreign_art.h"
 #include "mmx_boss_rush_audio.h"
+#include "mmx_weapon_combat.h"
+#include "mmx_source_assets.h"
+#include "host_paths.h"
 #include <stdlib.h>
 #include "mmx_wide_policy.h"
 

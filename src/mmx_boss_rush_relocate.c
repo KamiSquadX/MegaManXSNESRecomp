@@ -28,14 +28,27 @@ typedef struct MmxRelocBoss {
   const MmxRelocChild *children;size_t child_count;
   unsigned sound_bank;uint32_t sfx,sfx_pan;
   const uint8_t *effects;size_t effect_count;
+  const MmxBossRushWeakness *weaknesses;size_t weakness_count;
 } MmxRelocBoss;
 #define COUNT(a) (sizeof(a)/sizeof(*(a)))
+/* X1 shot classes: Homing Torpedo $0E, Shotgun Ice $07; charged +9. */
+enum { X1_ICE=0x07, X1_TORPEDO=0x0e, CHARGED=9 };
+/* Rhino runs on Kuwanger's X1 row, whose weakness column is Homing Torpedo's.
+ * His original X3 weakness, Acid Burst, takes that column and reports the
+ * Torpedo reaction his relocated flinch test looks for. Homing Torpedo
+ * itself is moved to an ordinary column (Ice) so it is not a weakness.
+ * Extra X1/X2 weaknesses are assigned once all 24 bosses exist. */
+static const MmxBossRushWeakness k_rhino_weaknesses[]={
+  {2,1,{X1_TORPEDO,X1_TORPEDO+CHARGED},{X1_TORPEDO,X1_TORPEDO+CHARGED}}, /* X3 Acid Burst */
+  {0,1,{X1_ICE,X1_ICE+CHARGED},{X1_ICE,X1_ICE+CHARGED}},                 /* X1 Homing Torpedo */
+};
 static const MmxRelocBoss kBosses[]={
   {"TUNNEL RHINO",3,k_rhino_roster_id,k_rhino_body,2,4,
    k_rhino_banks,COUNT(k_rhino_banks),k_rhino_copies,COUNT(k_rhino_copies),
    k_rhino_shim_code,k_rhino_blobs,COUNT(k_rhino_blobs),
    k_rhino_patches,COUNT(k_rhino_patches),k_rhino_children,COUNT(k_rhino_children),
-   k_rhino_sound_bank,k_rhino_sfx,k_rhino_sfx_pan,k_rhino_effects,COUNT(k_rhino_effects)},
+   k_rhino_sound_bank,k_rhino_sfx,k_rhino_sfx_pan,k_rhino_effects,COUNT(k_rhino_effects),
+   k_rhino_weaknesses,COUNT(k_rhino_weaknesses)},
 };
 /* Zero/sink area for X3-only globals: reads see zero, writes hit ROM. */
 enum { ZERO_AREA=0x86fe00, ZERO_SIZE=0x200 };
@@ -94,6 +107,9 @@ static bool build(const MmxRelocBoss *boss,const uint8_t *rom,size_t size,char *
     }
   /* Its X3 sound calls are hooked shims; render those effects from its own
    * driver and sound bank. A failed cache leaves the boss silent. */
+  if(!MmxBossRushForeignSetWeaknesses(boss->roster_id,boss->weaknesses,(unsigned)boss->weakness_count)) {
+    snprintf(error,cap,"%s: cannot register its weaknesses",boss->name);return false;
+  }
   MmxBossRushForeignSetSoundShims(boss->sfx,boss->sfx_pan);
   MmxBossRushAudioPrepareForeign(boss->roster_id,rom,size,boss->sound_bank,boss->effects,(unsigned)boss->effect_count);
   return true;

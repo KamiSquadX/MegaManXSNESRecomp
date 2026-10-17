@@ -25,6 +25,82 @@ static unsigned rush_rhino_art_pixels(const uint32_t *pixels,unsigned object,uns
   }
   return hits;
 }
+/* Fire one native shot at an idle Rhino and report his first damage, whether
+ * his relocated weakness test made him flinch, and his profile row then.
+ * page 0 fires X1 weapon `weapon` (0 = buster); pages 1/2 fire that loaded
+ * source pack's weapon through its own selection, as a player would.
+ * profile: force a row before firing (0 = drill-charge deflect), or -1. */
+typedef struct RhinoHit {unsigned damage;bool flinched;unsigned profile;} RhinoHit;
+static RhinoHit rush_rhino_shoot(uint8_t *snapshot,size_t size,unsigned object,unsigned page,
+                                 unsigned weapon,int profile) {
+  check(RtlLoadSnapshotFromMemory(snapshot,size),"Rhino weakness case restores combat");
+  MmxBossRushState s=MmxBossRushGetState();
+  unsigned penguin=s.bosses[0].object;RhinoHit result={0,false,0};
+  unsigned start_hp=g_ram[object+0x27]&127;bool hit=false;
+  MmxWeaponsState w=MmxWeaponsGetState();
+  w.initialized=1;w.page=(uint8_t)page;w.weapon=(uint8_t)(page?weapon:0);
+  if(page) w.energy[(page-1)*8+weapon-1]=28;
+  MmxWeaponsSetState(w);
+  for(unsigned t=0;t<300 && !result.flinched;++t) {
+    unsigned cx=s.camera_x+160,cy=s.camera_y+164;
+    if(!hit) {
+      /* Idle (behavior $0C step 1) with a long wait: no charge or volley. */
+      g_ram[object+2]=0x0c;g_ram[object+3]=1;g_ram[object+0x39]=100;
+      g_ram[object+5]=(uint8_t)cx;g_ram[object+6]=(uint8_t)(cx>>8);
+      g_ram[object+8]=(uint8_t)cy;g_ram[object+9]=(uint8_t)(cy>>8);
+      if(profile>=0) g_ram[object+0x28]=(uint8_t)profile;
+    }
+    g_ram[penguin+5]=(uint8_t)(s.camera_x-128);g_ram[penguin+6]=(uint8_t)((s.camera_x-128)>>8);
+    g_ram[0xbad]=(uint8_t)(s.camera_x+100);g_ram[0xbae]=(uint8_t)((s.camera_x+100)>>8);
+    g_ram[0xbb0]=(uint8_t)cy;g_ram[0xbb1]=(uint8_t)(cy>>8);
+    g_ram[0xbaa]=g_ram[0xbab]=g_ram[0xc2d]=0;g_ram[0xbb9]&=~64u;g_ram[0xbdb]=(uint8_t)(page?0:weapon*2);
+    for(unsigned d=0xe68;d<0x1628;d+=64) if(d<0x1228 || d>=0x1428) {
+      if(MmxBossRushOwner(d)>=0 && g_ram[d]) g_ram[d+0x26]=0; /* no contact knockback */
+    }
+    for(unsigned d=0x1228;d<0x1428;d+=64) if(g_ram[d]) {
+      memcpy(g_ram+d+5,g_ram+object+5,2);memcpy(g_ram+d+8,g_ram+object+8,2);
+      g_ram[d+4]=g_ram[d+7]=0;
+    }
+    /* Pack shots follow their combat record; keep those on the target too. */
+    MmxWeaponCombatState c=MmxWeaponsGetCombatState();
+    for(unsigned i=0;i<8;++i) if(c.shots[i].active) {
+      c.shots[i].x=(int32_t)((g_ram[object+5]|g_ram[object+6]<<8)<<8);
+      c.shots[i].y=(int32_t)((g_ram[object+8]|g_ram[object+9]<<8)<<8);
+    }
+    MmxWeaponsSetCombatState(c);
+    frame(t%90==0 && !hit?SNES_PAD_Y:0);rush_keep_players_alive();
+    unsigned hp=g_ram[object+0x27]&127;
+    if(!hit && hp<start_hp) {hit=true;result.damage=start_hp-hp;}
+    if(hit) {
+      result.profile=g_ram[object+0x28];
+      if(g_ram[object+1]==2 && (g_ram[object+2]==8 || g_ram[object+2]==10)) result.flinched=true;
+      if(t>200) break;
+    }
+    if(!hit && profile==0 && t>=120) break; /* deflected: never damaged */
+  }
+  return result;
+}
+static void rush_rhino_weakness_checks(uint8_t *snapshot,size_t size,unsigned object,const char *x3) {
+  RhinoHit buster=rush_rhino_shoot(snapshot,size,object,0,0,-1);
+  RhinoHit torpedo=rush_rhino_shoot(snapshot,size,object,0,1,-1);
+  RhinoHit deflect=rush_rhino_shoot(snapshot,size,object,0,0,0);
+  /* Acid Burst needs the X3 weapon pack, built from the same X3 ROM. */
+  char cache[512],error[512];
+  check(snesrecomp_exe_dir_path("rhino-x3-weapons.bin",cache,sizeof(cache)) &&
+      MmxSourceAssetsBuild(x3,3,0,cache,error,sizeof(error)) && MmxWeaponsLoadPage(cache,2),
+      "the X3 weapon pack loads for Rhino's weakness");
+  MmxZeroRegisterHooks();
+  RhinoHit acid=rush_rhino_shoot(snapshot,size,object,2,1,-1);
+  MmxWeaponsCancelShots(g_ram);MmxWeaponsDisable();
+  fprintf(stderr,"rhino hits: buster=%u/%u torpedo=%u/%u acid=%u/%u row=%u deflect=%u\n",
+      buster.damage,buster.flinched,torpedo.damage,torpedo.flinched,acid.damage,acid.flinched,
+      acid.profile,deflect.damage);
+  check(buster.damage==1 && !buster.flinched,"the buster deals Rhino's ordinary damage");
+  check(torpedo.damage==1 && !torpedo.flinched,"Homing Torpedo is not one of Rhino's weaknesses");
+  check(acid.damage==3 && acid.flinched,"Acid Burst is Rhino's weakness and makes him flinch");
+  check(acid.profile==5,"Rhino's weakness flinch is invulnerable");
+  check(!deflect.damage,"his drill-charge row deflects shots");
+}
 /* Tunnel Rhino's original X3 code, relocated from the user's ROM, fights in
  * seat 1 beside a native Penguin. MMX_BOSS_RUSH_X3_ROM names the X3 ROM. */
 static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
@@ -150,6 +226,7 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
   check(RtlLoadSnapshotFromMemory(start,n),"Rhino seat snapshot restores");
   for(unsigned t=0;t<60;++t) {frame(0);rush_keep_players_alive();}
   check(!memcmp(first,g_ram,sizeof(first)),"Rhino replay is deterministic");
+  rush_rhino_weakness_checks(start,n,object,x3);
   check(RtlLoadSnapshotFromMemory(start,n),"Rhino seat snapshot restores for defeat");
   unsigned defeated=MmxBossRushGetState().defeated;
   uint32_t generation=MmxBossRushGetState().bosses[1].generation;

@@ -18,6 +18,9 @@ typedef struct ForeignBody {
   uint8_t fighting,dying,kinds[MMX_RUSH_FOREIGN_CHILDREN];
 } ForeignBody;
 static ForeignBody bodies[MMX_RUSH_ROSTER];
+enum { MAX_WEAKNESSES=8 };
+static MmxBossRushWeakness weaknesses[MMX_RUSH_ROSTER][MAX_WEAKNESSES];
+static uint8_t weakness_count[MMX_RUSH_ROSTER];
 
 static bool dirty;
 static void publish(void) {MmxBossRushSetOffered(MmxBossRushForeignOffered());}
@@ -34,7 +37,7 @@ void MmxBossRushForeignUnload(void) {
   for(unsigned i=0;i<2;++i) {
     MmxBossRushForeignArtSetRom(i+2,NULL,0);free(roms[i]);roms[i]=NULL;sizes[i]=0;
   }
-  memset(bodies,0,sizeof(bodies));implemented=0;
+  memset(bodies,0,sizeof(bodies));implemented=0;memset(weakness_count,0,sizeof(weakness_count));
   dirty=true;publish();
 }
 bool MmxBossRushForeignReady(unsigned game) {
@@ -91,6 +94,16 @@ uint32_t MmxBossRushForeignOffered(void) {
   if(MmxBossRushForeignReady(2)) mask|=ready&MMX_RUSH_X2_MASK;
   if(MmxBossRushForeignReady(3)) mask|=ready&MMX_RUSH_X3_MASK;
   return mask;
+}
+bool MmxBossRushForeignSetWeaknesses(unsigned id,const MmxBossRushWeakness *rules,unsigned count) {
+  if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || count>MAX_WEAKNESSES || (count && !rules)) return false;
+  memcpy(weaknesses[id],rules,count*sizeof(*rules));weakness_count[id]=(uint8_t)count;return true;
+}
+const MmxBossRushWeakness *MmxBossRushForeignWeakness(unsigned id,unsigned page,unsigned weapon) {
+  if(id>=MMX_RUSH_ROSTER) return NULL;
+  for(unsigned i=0;i<weakness_count[id];++i)
+    if(weaknesses[id][i].page==page && weaknesses[id][i].weapon==weapon) return &weaknesses[id][i];
+  return NULL;
 }
 static uint32_t sound_shims[2];
 void MmxBossRushForeignSetSoundShims(uint32_t plain,uint32_t positional) {

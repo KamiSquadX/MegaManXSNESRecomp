@@ -10,6 +10,7 @@
 #include "mmx_rtl.h"
 #include "mmx_zero.h"
 #include "mmx_weapons.h"
+#include "mmx_weapon_combat.h"
 #include "snes_overlay_draw.h"
 #include "cpu_state.h"
 #include "snes/snes.h"
@@ -338,6 +339,24 @@ static void foreign_sound_hook(CpuState *cpu,uint32_t pc) {
   }
   MmxBossRushAudioQueueForeign((unsigned)owner,cpu->D,b.id,cpu->A&255,(uint8_t)pan,b.generation);
 }
+/* Weaknesses of relocated bodies. $84:9E1A loads the hitting shot's class
+ * (the damage column in the target's X1 row); $84:9E3A stores the reaction
+ * class in $1F1D, which their relocated weakness test reads. X = shot. */
+static void foreign_weakness_hook(CpuState *cpu,uint32_t pc) {
+  if(!playing()) return;
+  int owner=MmxBossRushOwner(cpu->D);if(owner<0) return;
+  MmxBossRushBoss b=MmxBossRushGetState().bosses[owner];
+  if(!b.phase || b.object!=cpu->D || MmxBossRushNative(b.id)) return;
+  unsigned page,weapon,charged;
+  if(!MmxWeaponsShotIdentity(g_ram,cpu->X,&page,&weapon,&charged)) return;
+  const MmxBossRushWeakness *w=MmxBossRushForeignWeakness(b.id,page,weapon);
+  if(!w) return;
+  bool reaction=(pc&0xffff)==0x9e3a;
+  unsigned value=reaction?w->reaction[charged!=0]:w->damage[charged!=0];
+  cpu->A=(uint16_t)((cpu->A&0xff00)|value);
+  cpu->_flag_Z=!value;cpu->_flag_N=0;
+  cpu->P=(cpu->P&~0x82u)|(cpu->_flag_Z?2:0);
+}
 void MmxBossRushHostFrame(void) {
 #if !MMX_VARIANT_JP
   MmxBossRushForeignSync();
@@ -369,6 +388,9 @@ void MmxBossRushHostFrame(void) {
   registered&=interp_bridge_add_pre_opcode_hook(0x80d544,foreign_dispatch_hook);
   registered&=interp_bridge_add_pre_opcode_hook(0x00d4e7,foreign_projectile_hook);
   registered&=interp_bridge_add_pre_opcode_hook(0x80d4e7,foreign_projectile_hook);
+  const unsigned weakness_pcs[]={0x049e1d,0x849e1d,0x049e3a,0x849e3a};
+  for(unsigned i=0;i<sizeof(weakness_pcs)/sizeof(*weakness_pcs);++i)
+    registered&=interp_bridge_add_pre_opcode_hook(weakness_pcs[i],foreign_weakness_hook);
   uint32_t plain,positional;MmxBossRushForeignSoundShims(&plain,&positional);
   if(plain) registered&=interp_bridge_add_pre_opcode_hook(plain,foreign_sound_hook);
   if(positional) registered&=interp_bridge_add_pre_opcode_hook(positional,foreign_sound_hook);

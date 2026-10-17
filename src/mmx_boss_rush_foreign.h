@@ -29,6 +29,14 @@ uint32_t MmxBossRushForeignChild(unsigned id,uint8_t kind);
  * (plain and positional); the runtime hooks them to queue cached clips. */
 void MmxBossRushForeignSetSoundShims(uint32_t plain,uint32_t positional);
 void MmxBossRushForeignSoundShims(uint32_t *plain,uint32_t *positional);
+/* Weaknesses of a relocated body against one weapon (page 0 X1, 1 X2, 2 X3;
+ * see MmxWeaponsShotIdentity). `damage` picks the X1 damage column in its
+ * row; `reaction` is the class its own weakness test sees in $1F1D. */
+typedef struct MmxBossRushWeakness {
+  uint8_t page,weapon,damage[2],reaction[2]; /* [normal, charged] */
+} MmxBossRushWeakness;
+bool MmxBossRushForeignSetWeaknesses(unsigned id,const MmxBossRushWeakness *rules,unsigned count);
+const MmxBossRushWeakness *MmxBossRushForeignWeakness(unsigned id,unsigned page,unsigned weapon);
 /* Rebuild every relocated body for the loaded source ROMs into the cart's
  * patch windows (mmx_boss_rush_relocate.c). Restores the cart first. */
 bool MmxBossRushForeignBuild(char *error,size_t error_size);

@@ -72,9 +72,10 @@ SHIMS = {
 }
 # X3 RAM -> X1 RAM. The $09xx/$0Axx player block is X1's $0Bxx/$0Cxx + $1D0.
 RAM = {0x09cb: 0x0b9b, 0x09cc: 0x0b9c, 0x09da: 0x0baa, 0x09dd: 0x0bad, 0x09e0: 0x0bb0,
-       0x09ff: 0x0bcf, 0x0a03: 0x0bd3, 0x1e5d: 0x1e4d, 0x1e60: 0x1e50, 0x1f1f: 0x1f0e}
+       0x09ff: 0x0bcf, 0x0a03: 0x0bd3, 0x1e5d: 0x1e4d, 0x1e60: 0x1e50, 0x1f1f: 0x1f0e,
+       0x1f2f: 0x1f1d}  # last hit's (reaction) class, written by the damage helper
 # X3-only globals: reads see zero, writes land in ROM and are ignored.
-ZERO = {0x0040, 0x00a1, 0x0a43, 0x1f18, 0x1f2f, 0x1f36, 0x1f54, 0x1f55, 0x1f56, 0x1f57,
+ZERO = {0x0040, 0x00a1, 0x0a43, 0x1f18, 0x1f36, 0x1f54, 0x1f55, 0x1f56, 0x1f57,
         0x1fae, 0x1fca, 0x1fda, 0x1fe0, 0x049e, 0x0480, 0x0482, 0x0484, 0x04a0}
 ZERO_LONG = {0x001f39, 0x7fcac0}
 # 16-bit immediates that are RAM object pointers.
@@ -85,15 +86,27 @@ PAD_SHIMS, PAD_DATA, PAD_ZERO = 0x86fa80, 0x86fb00, 0x86fe00
 
 
 class Boss:
-    def __init__(self, name, roster_id, body, children, x3_class, data):
+    def __init__(self, name, roster_id, body, children, x3_class, data, profiles, flinch):
         self.name, self.roster_id, self.body = name, roster_id, body
         self.children, self.x3_class, self.data = children, x3_class, data
+        # X3 damage profile (+$28) -> X1 row at $86:EF37. X1 rows 6-13 are the
+        # Mavericks; row 0 deflects every shot, row 5 takes no damage.
+        self.profiles = profiles
+        # X3 weakness shot classes compared against $1F2F -> X1 reaction
+        # classes the Rush weakness hook reports for this boss's weaknesses.
+        self.flinch = flinch
 
 
 RHINO = Boss('rhino', 23, 0x3fe5e4, {0x26: 0x08ab9b}, 0x55,
              # $86 tables read through the data bank: hitboxes, drill spawn
              # tables and the shared angle table (indices $00-$70).
-             [(0x86ec87, 10), (0x86efb8, 0x35), (0x86e18e, 0x74)])
+             [(0x86ec87, 10), (0x86efb8, 0x35), (0x86e18e, 0x74)],
+             # Normal: Kuwanger's row (its Homing Torpedo column carries the
+             # weakness; Rush neutralizes Torpedo itself for Rhino). Drill
+             # charge deflects ($0D -> row 0); the flinch is invulnerable.
+             {0x18: 0x0a, 0x0d: 0x00, 0x01: 0x05},
+             # Acid Burst parts $07/$10/$18/$21 -> X1 Torpedo normal/charged.
+             {0x07: 0x0e, 0x10: 0x17, 0x18: 0x0e, 0x21: 0x17})
 
 
 def bank_map(address):
@@ -156,8 +169,15 @@ def build(rom, boss):
         blobs.append((cursor, code))
         if kind == 'init':
             row = 0x86e28e + (boss.x3_class - 1) * 5
-            column = {0x16: 0, 0x26: 2, 0x27: 3, 0x28: 4}
-            init_fields = [(cursor + at, row + column[field]) for at, field in fields]
+            column = {0x16: 0, 0x26: 2, 0x27: 3}
+            # The damage profile becomes the boss's X1 row, written directly.
+            for at, field in fields:
+                if field == 0x28:
+                    profile = rom.byte(row + 4)
+                    if profile not in boss.profiles:
+                        errors.append(f'class row profile ${profile:02X} has no X1 row')
+                    code[at] = boss.profiles.get(profile, 0)
+            init_fields = [(cursor + at, row + column[field]) for at, field in fields if field != 0x28]
         cursor += len(code)
     if cursor > PAD_DATA:
         errors.append('shims overflow their padding')
@@ -213,6 +233,18 @@ def build(rom, boss):
                 pass  # direct-page-style scratch shared by both engines
             elif v in RAM:
                 patch(2, RAM[v])
+                if v == 0x1f2f:
+                    # Weakness test: the CMP chain after this load names the
+                    # X3 weakness shot classes; use X1 reaction classes.
+                    at = (a & 0xff0000) | ((a + insn.size) & 0xffff)
+                    while at in seen and seen[at].name in ('CMP', 'BEQ', 'BNE'):
+                        cmp = seen[at]
+                        if cmp.name == 'CMP':
+                            if cmp.value not in boss.flinch:
+                                errors.append(f'${at:06X}: weakness class ${cmp.value:02X} unmapped')
+                            else:
+                                patches.append((bank_map(at) + 1, 1, cmp.value, boss.flinch[cmp.value]))
+                        at = (at & 0xff0000) | ((at + cmp.size) & 0xffff)
             elif v in ZERO:
                 patch(2, (PAD_ZERO & 0xffff) | (v & 0x1ff))
             else:
@@ -227,6 +259,12 @@ def build(rom, boss):
             nxt = seen.get((a & 0xff0000) | ((a + 2) & 0xffff))
             if nxt and nxt.name == 'PHA' and v in BANKS and BANKS[v] != v:
                 patch(1, BANKS[v])
+            if nxt and nxt.name == 'STA' and nxt.mode == 'dp' and nxt.value == 0x28:
+                # Damage profile switch: X3 row -> X1 row.
+                if v not in boss.profiles:
+                    errors.append(f'${a:06X}: X3 damage profile ${v:02X} has no X1 row')
+                elif boss.profiles[v] != v:
+                    patch(1, boss.profiles[v])
             if nxt and nxt.name == 'STA' and nxt.mode == 'dp' and nxt.value == 0x20:
                 # Split hitbox pointer: LDA #lo; STA $20; LDA #hi; STA $21.
                 hi = seen.get((a & 0xff0000) | ((a + 4) & 0xffff))
