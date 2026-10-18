@@ -104,6 +104,15 @@ typedef struct MmxBossRushRoomRead {
 } MmxBossRushRoomRead;
 void MmxBossRushForeignAddRoomReads(const MmxBossRushRoomRead *reads,unsigned count);
 unsigned MmxBossRushForeignRoomReads(const MmxBossRushRoomRead **reads);
+/* Before the body runs `pc`, Rush writes `value` to work RAM `address` (in
+ * the seat's scratch window while it runs): a timing the source game got
+ * from its own room that Rush's arena does not give. */
+typedef struct MmxBossRushPoke {
+  uint32_t pc,address;
+  uint8_t value;
+} MmxBossRushPoke;
+void MmxBossRushForeignAddPokes(const MmxBossRushPoke *pokes,unsigned count);
+unsigned MmxBossRushForeignPokes(const MmxBossRushPoke **pokes);
 /* A death sequence the body plays itself (e.g. Wire Sponge splitting in two)
  * while its object's `field` holds `value` (or 0, before it chooses): Rush
  * lets its controller run for `frames` before its own explosion and cleanup. */

@@ -42,6 +42,7 @@ typedef struct MmxRelocBoss {
   uint32_t saber_kill;uint8_t saber_value; /* death test that reads the killing class */
   const MmxBossRushRoomRead *room_reads;size_t room_read_count;
   uint8_t death_field,death_value,death_frames; /* own death sequence */
+  const MmxBossRushPoke *pokes;size_t poke_count;
 } MmxRelocBoss;
 #define COUNT(a) (sizeof(a)/sizeof(*(a)))
 /* X1 shot classes: weapon n fires class $0F-n (Homing Torpedo $0E, Fire
@@ -85,6 +86,13 @@ static const MmxBossRushWeakness k_sponge_weaknesses[]={
  * the fall lasts long enough for his vine to finish lowering (its segment
  * count $7F:CD90 counts down every 6 frames while he falls). */
 static const MmxBossRushRoomRead k_sponge_rooms[]={{0xb59adb,1,MMX_SPONGE_ENTRY_Y}};
+/* While he falls he lowers his 11 whip segments, one every 6 frames
+ * ($7F:CD90 counts them down); his vine waits for 0 before it climbs to
+ * him. X2 drops him from far above, so all are down before he lands. Rush's
+ * shorter fall (62-66 frames) could land him with one left: the vine then
+ * waited forever and he never left his entrance. Landing ($04:9BD5) lowers
+ * the rest; the vine must not arrive sooner, while his landing pose plays. */
+static const MmxBossRushPoke k_sponge_pokes[]={{0xb59bd5,0x7fcd90,0}};
 static const MmxRelocBoss kBosses[]={
   {"TUNNEL RHINO",3,k_rhino_roster_id,k_rhino_body,2,4,
    k_rhino_banks,COUNT(k_rhino_banks),k_rhino_copies,COUNT(k_rhino_copies),
@@ -95,7 +103,7 @@ static const MmxRelocBoss kBosses[]={
    /* X3 $13:F7D6 rotates OBJ colors 1-15; $13:F7FC fades them back. */
    0x33f7d6,0x33f7fc,k_rhino_midline,COUNT(k_rhino_midline),
    k_rhino_spawns,COUNT(k_rhino_spawns),k_rhino_child_guards,COUNT(k_rhino_child_guards),
-   k_rhino_effect_children,k_rhino_effect_child_count,0,0,0,0,NULL,0,0,0,0},
+   k_rhino_effect_children,k_rhino_effect_child_count,0,0,0,0,NULL,0,0,0,0,NULL,0},
   {"WIRE SPONGE",2,k_sponge_roster_id,k_sponge_body,2,4,
    k_sponge_banks,COUNT(k_sponge_banks),k_sponge_copies,COUNT(k_sponge_copies),
    k_sponge_shim_code,k_sponge_blobs,COUNT(k_sponge_blobs),
@@ -109,7 +117,7 @@ static const MmxRelocBoss kBosses[]={
    0xb5a70c,X1_FIRE,k_sponge_rooms,COUNT(k_sponge_rooms),
    /* Death path $3B = 6 splits him in two: fall, land, 30 frames, the halves
    * part, 60 frames, then his explosion. */
-   0x3b,6,180},
+   0x3b,6,180,k_sponge_pokes,COUNT(k_sponge_pokes)},
 };
 /* Zero/sink area for X3-only globals: reads see zero, writes hit ROM. */
 enum { ZERO_AREA=0x86fe40, ZERO_SIZE=0x100 };
@@ -186,6 +194,7 @@ static bool build(const MmxRelocBoss *boss,const uint8_t *rom,size_t size,char *
   MmxBossRushForeignAddSpawnGuards(boss->spawns,(unsigned)boss->spawn_count);
   MmxBossRushForeignAddChildGuards(boss->child_guards,(unsigned)boss->child_guard_count);
   MmxBossRushForeignAddRoomReads(boss->room_reads,(unsigned)boss->room_read_count);
+  MmxBossRushForeignAddPokes(boss->pokes,(unsigned)boss->poke_count);
   if(boss->death_frames &&
       !MmxBossRushForeignSetOwnDeath(boss->roster_id,boss->death_field,boss->death_value,boss->death_frames)) {
     snprintf(error,cap,"%s: cannot register its death sequence",boss->name);return false;

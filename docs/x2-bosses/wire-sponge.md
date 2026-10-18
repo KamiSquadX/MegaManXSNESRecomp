@@ -50,8 +50,18 @@ him.
 counter `$7F:CD90` counts down every 6 frames during the fall, and the vine
 child writes `$80` into his `+$0F` to release intro step 6. The Rush arena has
 a ceiling there, so Rush answers that read with the arena top plus `$20`
-(`MMX_SPONGE_ENTRY_Y`); the fall then lasts long enough (~66 frames) for the
-vine to finish.
+(`MMX_SPONGE_ENTRY_Y`).
+
+His vine waits for the counter to reach 0 before it climbs to him. Once he
+has landed and his landing pose has finished (`+$0F` bit 6), he waits for
+the vine's `$80` in `+$0F`. The vine's store replaces all of `+$0F`, so it
+must not arrive before that. In X2 the long fall lowers all 11 segments
+(one every 6 frames, 66 frames) before he lands. Rush's fall takes 62–66
+frames: a 62-frame fall left one segment and the vine waited forever
+(playtest 2026-10-18). A Rush poke at his landing (`$04:9BD5`) now lowers
+the rest, which keeps the vine's arrival after his landing pose. Lowering
+segments faster instead brought the vine too early and stuck him at his
+landing. The fixture shortens his fall by 24 pixels to cover this.
 
 **Death.** `+$3D` holds the last hit's class. At `$04:A70C`, `CMP #$0B`
 picks death path `+$3B` = 6 (Sonic Slicer: he falls, lands, and splits into

@@ -1102,6 +1102,9 @@ static void rush_replay_scan(const char *list) {
         s.bosses[1].id,s.bosses[1].phase,s.bosses[1].object,
         s.bosses[1].object?g_ram[s.bosses[1].object+0x27]&127:0,s.bosses[1].globals[0],
         s.globals[31],s.globals[39],s.actor,s.defeated);
+    for(unsigned d=0x1428;d<0x1628;d+=64) if(g_ram[d])
+      fprintf(stderr,"  projectile %04x class=%02x state=%02x/%02x owner=%u occupied=%u\n",d,g_ram[d+10],g_ram[d+1],
+          g_ram[d+2],s.owner[(d-0xe68)/32],s.occupied[(d-0xe68)/32]);
   }
   fclose(names);
 }
@@ -1128,6 +1131,15 @@ static void rush_replay_play(const char *name) {
     if(have && !(loaded && sscanf(line,"I %u %x",&frame_number,&word)==2)) continue;
     if(!have) {if(!extra--) break;word=1u<<30;}
     frame(word&~(1u<<30));++inputs;
+    /* MMX_REPLAY_PLAY_WATCH: hex WRAM addresses, comma separated. */
+    static unsigned watch[32],watch_count;static uint8_t watched[32];static bool parsed;
+    if(!parsed) {
+      parsed=true;const char *w=getenv("MMX_REPLAY_PLAY_WATCH");
+      while(w && *w && watch_count<32) {watch[watch_count++]=(unsigned)strtoul(w,(char **)&w,16);if(*w==',') ++w;}
+    }
+    for(unsigned i=0;i<watch_count;++i) if(g_ram[watch[i]]!=watched[i] || inputs==1) {
+      fprintf(stderr,"play %u %04x=%02x\n",inputs,watch[i],g_ram[watch[i]]);watched[i]=g_ram[watch[i]];
+    }
     uint8_t now[6]={g_ram[0xbaa],g_ram[0xbcf]&127,g_ram[0xbd8],g_ram[0xc32],g_ram[0xc13],0};
     if(first || memcmp(now,last,5)) {
       fprintf(stderr,"play %u st=%02x hp=%u bd8=%02x c32=%02x c13=%02x\n",inputs,now[0],now[1],now[2],now[3],now[4]);

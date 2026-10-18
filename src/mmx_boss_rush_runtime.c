@@ -428,6 +428,17 @@ static void foreign_room_hook(CpuState *cpu,uint32_t pc) {
     return;
   }
 }
+/* A relocated body's poke (see MmxBossRushPoke). */
+static void foreign_poke_hook(CpuState *cpu,uint32_t pc) {
+  if(!playing()) return;
+  int owner=MmxBossRushOwner(cpu->D);if(owner<0) return;
+  MmxBossRushBoss b=MmxBossRushGetState().bosses[owner];
+  if(!b.phase || b.object!=cpu->D || MmxBossRushNative(b.id)) return;
+  const MmxBossRushPoke *pokes;unsigned count=MmxBossRushForeignPokes(&pokes);
+  for(unsigned i=0;i<count;++i)
+    if((pokes[i].pc&0x7fffff)==(pc&0x7fffff) && pokes[i].address>=0x7e0000 && pokes[i].address<0x800000)
+      g_ram[pokes[i].address-0x7e0000]=pokes[i].value;
+}
 /* Relocated bodies call shims in place of their source game's sound-effect
  * routines; A holds the effect. Queue that boss's cached clip. X3's
  * positional variant ($01:8000) pans by half the emitter's distance from
@@ -597,6 +608,8 @@ void MmxBossRushHostFrame(void) {
     registered&=interp_bridge_add_pre_opcode_hook(effect_pcs[i],foreign_effect_hook);
   const MmxBossRushRoomRead *rooms;unsigned room_count=MmxBossRushForeignRoomReads(&rooms);
   for(unsigned i=0;i<room_count;++i) registered&=interp_bridge_add_pre_opcode_hook(rooms[i].pc,foreign_room_hook);
+  const MmxBossRushPoke *pokes;unsigned poke_count=MmxBossRushForeignPokes(&pokes);
+  for(unsigned i=0;i<poke_count;++i) registered&=interp_bridge_add_pre_opcode_hook(pokes[i].pc,foreign_poke_hook);
   const uint32_t *kills;unsigned kill_count=MmxBossRushForeignSaberKillReads(&kills);
   for(unsigned i=0;i<kill_count;++i) registered&=interp_bridge_add_pre_opcode_hook(kills[i],foreign_saber_kill_hook);
   const unsigned weakness_pcs[]={0x049e1d,0x849e1d,0x049e3a,0x849e3a};

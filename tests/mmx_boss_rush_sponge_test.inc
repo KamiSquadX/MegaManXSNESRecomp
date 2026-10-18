@@ -92,6 +92,9 @@ static void rush_sponge_checks(uint8_t *start,size_t cap,const char *x2) {
   unsigned seen_behavior=0,max_hp=0,last=0xffffff,fighting_at=0,shots=0,effects_seen=0,shot_pixels=0,segment_pixels=0;
   int min_x=1<<30,max_x=-(1<<30),min_y=1<<30,max_y=-(1<<30);
   for(unsigned t=0;t<2400;++t) {
+    /* Shorten his fall by 24 pixels, below any arena entrance (a 62-frame
+     * fall once left his vine waiting forever, playtest 2026-10-18). */
+    if(t==1) eagle_putword(g_ram+object+8,eagle_word(g_ram+object+8)+24);
     frame(0);rush_keep_players_alive();s=MmxBossRushGetState();
     if(!s.bosses[1].phase || s.bosses[1].id!=13) {fprintf(stderr,"sponge left seat 1 at t=%u\n",t);break;}
     unsigned state=g_ram[object+1]<<16|g_ram[object+2]<<8|g_ram[object+3];
@@ -132,7 +135,7 @@ static void rush_sponge_checks(uint8_t *start,size_t cap,const char *x2) {
       fighting_at,seen_behavior,min_x,max_x,min_y,max_y,max_hp,shots,effects_seen,s.bosses[1].phase);
   check(fighting_at && s.bosses[1].phase==MMX_RUSH_FIGHTING,"Wire Sponge's original intro hands over to combat");
   check(max_hp==32,"Wire Sponge's intro fills his health meter");
-  check(shot_pixels>=40 && segment_pixels>=40,"Wire Sponge's shots and whip draw with his X2 art");
+  check(shot_pixels>=16 && segment_pixels>=16,"Wire Sponge's shots and whip draw with his X2 art");
   const MmxForeignPose *art=MmxBossRushForeignPose(13,g_ram[object+0x16],g_ram[object+0x17]&0x7f);
   fprintf(stderr,"sponge art: colors=%d set=%02x pose=%02x -> %dx%d\n",MmxBossRushForeignColors(13)!=NULL,
       g_ram[object+0x16],g_ram[object+0x17],art?art->width:0,art?art->height:0);

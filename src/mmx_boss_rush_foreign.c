@@ -177,11 +177,19 @@ static MmxBossRushSpawnGuard spawn_guards[HOOKS_MAX];static unsigned spawn_guard
 static MmxBossRushChildGuard child_guards[HOOKS_MAX];static unsigned child_guard_count;
 static uint32_t sound_pcs[HOOKS_MAX];static bool sound_positional[HOOKS_MAX];static unsigned sound_count;
 static MmxBossRushRoomRead room_reads[HOOKS_MAX];static unsigned room_read_count;
+static MmxBossRushPoke pokes[HOOKS_MAX];static unsigned poke_count;
 void MmxBossRushForeignResetHooks(void) {
-  palette_count=midline_count=spawn_guard_count=child_guard_count=sound_count=room_read_count=0;
+  palette_count=midline_count=spawn_guard_count=child_guard_count=sound_count=room_read_count=poke_count=0;
 }
 void MmxBossRushForeignAddRoomReads(const MmxBossRushRoomRead *reads,unsigned count) {
   for(unsigned i=0;i<count && room_read_count<HOOKS_MAX;++i) room_reads[room_read_count++]=reads[i];
+}
+void MmxBossRushForeignAddPokes(const MmxBossRushPoke *list,unsigned count) {
+  for(unsigned i=0;i<count && poke_count<HOOKS_MAX;++i) pokes[poke_count++]=list[i];
+}
+unsigned MmxBossRushForeignPokes(const MmxBossRushPoke **list) {
+  if(list) *list=pokes;
+  return poke_count;
 }
 unsigned MmxBossRushForeignRoomReads(const MmxBossRushRoomRead **reads) {
   if(reads) *reads=room_reads;

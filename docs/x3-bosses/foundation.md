@@ -363,6 +363,7 @@ several relocated bosses coexist):
 | --- | --- |
 | Effect children | X1's effect list dispatch (`JSR ($F3B9,x)` at `$80:D359`/`$D380`) runs a foreign seat's own effect classes; the renderer draws those classes from the source art too (X1-native effects a boss spawns keep their own) |
 | Room reads | `LDA camera; AND #$1F00` answers with the arena origin plus an offset |
+| Pokes | write a work-RAM byte before a body instruction, for timing its source room gave it (Wire Sponge's landing lowers his remaining vine segments) |
 | Scratch | a seat's private window of shared work RAM (`$7F:CD90`), swapped in and out around its objects; saved as `MmxBossRushScratchState` (chunk **v24**) |
 | Saber kill | Zero's saber hits read as a chosen class in a body's death test |
 | Own death | Rush waits for a body's own death sequence before its explosion |
