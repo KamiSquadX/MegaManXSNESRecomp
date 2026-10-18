@@ -258,6 +258,15 @@ static void rush_rhino_launcher(void) {
     fprintf(stderr,"rhino launcher: rush=%u mavericks=%u rom=%u weapons=%u error=%s\n",rush,mavericks,
         rom,weapons,snes_mod_runtime_last_error_c());
   check(rush && mavericks && rom && weapons,"launcher enables Boss Rush, X3 Mavericks and X3 weapons");
+  /* With an X2 ROM, also enable the X2 Mavericks and X2 weapons. */
+  const char *x2=getenv("MMX_BOSS_RUSH_X2_ROM");
+  if(x2) {
+    const char *x2_bosses="megaman-x.boss-rush.x2-bosses";
+    check(p->feature_enable(p->ctx,x2_bosses,"bosses",1) &&
+        p->feature_resource_set_path(p->ctx,x2_bosses,"bosses","x2-rom",x2) &&
+        p->feature_enable(p->ctx,"megaman-x.weapons.x2","weapons",1),
+        "launcher enables X2 Mavericks and X2 weapons");
+  }
   bool zero=strcmp(who,"x")!=0;
   if(zero) {
     const char *behavior=!strcmp(who,"modern")?"modern":!strcmp(who,"saber")?"saber":"x3";
@@ -287,6 +296,8 @@ static void rush_rhino_launcher(void) {
   snes_mod_runtime_activate_plugins_c();
   check(MmxBossRushForeignReady(3) && MmxWeaponsPageEnabled(2),
       "the shared X3 ROM reaches X3 Mavericks and X3 weapons");
+  if(x2) check(MmxBossRushForeignReady(2) && MmxWeaponsPageEnabled(1),
+      "the shared X2 ROM reaches X2 Mavericks and X2 weapons");
   if(zero) check(MmxZeroEnabled() && MmxZeroActive(),"the run starts as Zero");
   if(!strcmp(who,"modern")) check(MmxZeroModern(),"Modern Zero is active");
   if(!strcmp(who,"saber")) check(MmxSaberEnabled(),"Saber Zero is active");

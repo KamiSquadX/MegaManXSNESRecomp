@@ -4,19 +4,27 @@
 #include <string.h>
 
 /* Where each relocated body's art lives in its source ROM. The resource is
- * the boss's graphics slot (X3 slot == resource number, record table
- * $86:F732); the palette is its stage list index into $86:8180. */
+ * the boss's graphics slot (slot == resource number in X2 and X3); the
+ * palette is its stage list index into the game's palette lists. */
 typedef struct ArtSource {
   unsigned id,game,resource,palette;
 } ArtSource;
 static const ArtSource kSources[]={
+  {13,2,0x45,0x9e}, /* Wire Sponge: tiles $A1:9D4C, colors $85:B7A0 */
   {23,3,0x1d,0x3e}, /* Tunnel Rhino: tiles $9E:C284, colors $8C:E628 */
 };
-enum { RESOURCE_TABLE=0x86f732, PALETTE_LISTS=0x868180, PALETTE_BANK=0x8c,
-       LAYOUT_SETS=0x8d8000, MAX_TILES=256, CACHE=96 };
+/* Per game: compressed resource records, palette lists (data bank $86),
+ * the palette color bank. Both games keep pose layouts at $8D:8000. */
+typedef struct GameArt {uint32_t resources,palette_lists;uint8_t palette_bank;} GameArt;
+static const GameArt kGames[2]={
+  {0x86fa01,0x86817a,0x85}, /* X2 */
+  {0x86f732,0x868180,0x8c}, /* X3 */
+};
+enum { LAYOUT_SETS=0x8d8000, MAX_TILES=256, CACHE=96 };
 
 typedef struct Art {
   bool tried,ready;
+  const GameArt *game;
   const uint8_t *rom;size_t size;
   uint8_t tiles[MAX_TILES*32];unsigned tile_count;
   uint16_t colors[16];
@@ -42,7 +50,7 @@ static unsigned long24(const uint8_t *p) {return p[0]|p[1]<<8|p[2]<<16;}
 /* The source games' OBJ resources use the LZ format the weapon extractor
  * decodes: an 8-bit control byte, then literals or 10-bit back-references. */
 static bool decompress(Art *a,unsigned resource) {
-  const uint8_t *record=at(a,RESOURCE_TABLE+resource*5,5);
+  const uint8_t *record=at(a,a->game->resources+resource*5,5);
   if(!record) return false;
   unsigned length=word(record+3);
   uint32_t source=long24(record);
@@ -68,11 +76,11 @@ static bool decompress(Art *a,unsigned resource) {
   return true;
 }
 static bool palette(Art *a,unsigned list) {
-  const uint8_t *entry=at(a,PALETTE_LISTS+list,2);
+  const uint8_t *entry=at(a,a->game->palette_lists+list,2);
   if(!entry) return false;
   const uint8_t *record=at(a,0x860000|word(entry),4);
   if(!record || record[0]<16) return false;
-  const uint8_t *colors=at(a,(uint32_t)PALETTE_BANK<<16|word(record+1),32);
+  const uint8_t *colors=at(a,(uint32_t)a->game->palette_bank<<16|word(record+1),32);
   if(!colors) return false;
   for(unsigned c=0;c<16;++c) a->colors[c]=(uint16_t)(word(colors+c*2)&0x7fff);
   return true;
@@ -86,7 +94,7 @@ static Art *art(unsigned id) {
     if(kSources[i].id!=id) continue;
     unsigned game=kSources[i].game;
     if(game<2 || game>3) break;
-    a->rom=sources[game-2];a->size=source_sizes[game-2];
+    a->rom=sources[game-2];a->size=source_sizes[game-2];a->game=&kGames[game-2];
     a->ready=a->rom && decompress(a,kSources[i].resource) && palette(a,kSources[i].palette);
   }
   return a->ready?a:NULL;

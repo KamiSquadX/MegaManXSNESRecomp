@@ -213,6 +213,7 @@ static void rush_foreign_spike_checks(uint8_t *start,size_t cap) {
   puts("MMX BOSS RUSH FOREIGN SPIKE CHECKS PASSED");
 }
 #include "mmx_boss_rush_rhino_test.inc"
+#include "mmx_boss_rush_sponge_test.inc"
 static uint8_t rush_extension_value;
 static void rush_extension_reset(uint8_t *ram) {(void)ram;rush_extension_value=0;}
 static void rush_extension_save(uint8_t out[]) {out[0]='R';out[1]=rush_extension_value;}
@@ -224,9 +225,9 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
   size_t n=RtlSaveSnapshotToMemory(start,cap);check(n,"combined Zero/Rush snapshot saves");
   size_t rush_bytes=sizeof(MmxBossRushState),audio_bytes=sizeof(MmxBossRushAudioState),
       visual_bytes=sizeof(MmxBossRushVisualState),bounds_bytes=sizeof(MmxCoopViewBoundsState),
-      roster_bytes=sizeof(MmxBossRushRosterState);
+      roster_bytes=sizeof(MmxBossRushRosterState),scratch_bytes=sizeof(MmxBossRushScratchState);
   size_t v21_bytes=MMX_ZERO_EXTENSION_STATE_BYTES+rush_bytes+audio_bytes+visual_bytes;
-  size_t tail=n-v21_bytes-bounds_bytes-roster_bytes;
+  size_t tail=n-v21_bytes-bounds_bytes-roster_bytes-scratch_bytes;
   size_t chunk=0;
   for(size_t i=n-8;i>8;--i) {
     uint32_t magic;memcpy(&magic,start+i,4);
@@ -234,11 +235,12 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
   }
   check(chunk && tail>chunk,"bounded game state tail located");
   uint32_t version;memcpy(&version,start+chunk+4,4);
-  check(version==23,"combined state uses v23 with the Boss Rush roster");
+  check(version==24,"combined state uses v24 with the Boss Rush roster and scratch RAM");
   MmxBossRushState original=MmxBossRushGetState();
   /* 0: main v18 (extension only); 1-3: Rush previews v18/v19/v20;
-   * 4: v21 extension + Rush; 5: v22 adds per-seat view bounds. */
-  for(unsigned format=0;format<6;++format) {
+   * 4: v21 extension + Rush; 5: v22 adds per-seat view bounds; 6: v23 adds
+   * the roster. */
+  for(unsigned format=0;format<7;++format) {
     memcpy(legacy,start,n);size_t length=n;
     version=format?format+17:18;
     if(!format) length=tail+MMX_ZERO_EXTENSION_STATE_BYTES; /* main v18 */
@@ -246,7 +248,7 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
       size_t bytes=rush_bytes+(format>=2?audio_bytes:0)+(format>=3?visual_bytes:0);
       memmove(legacy+tail,start+tail+MMX_ZERO_EXTENSION_STATE_BYTES,bytes);
       length=tail+bytes; /* original Rush v18/v19/v20 */
-    } else length=tail+v21_bytes+(format==5?bounds_bytes:0);
+    } else length=tail+v21_bytes+(format>=5?bounds_bytes:0)+(format>=6?roster_bytes:0);
     memcpy(legacy+chunk+4,&version,4);rush_extension_value=99;
     check(RtlLoadSnapshotFromMemory(legacy,length),"main/preview/current memory state imports");
     check(rush_extension_value==(format==0 || format>=4?7:0),
@@ -254,7 +256,7 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
     MmxBossRushState loaded=MmxBossRushGetState();
     check(format?!memcmp(&original,&loaded,sizeof(loaded)):loaded.mode==MMX_RUSH_OFF,
         "old main v18 has no Rush state; each preview keeps its queue");
-    if(format) {
+    if(format && format<6) {
       MmxBossRushRosterState imported=MmxBossRushRosterGetState();
       check(imported.available==MMX_RUSH_X1_MASK && MmxBossRushRosterMatches(&loaded,&imported),
           "pre-roster states import an X1-only roster");
@@ -1206,6 +1208,7 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
       "the encounter begins with the player near the middle of the view");
   if(getenv("MMX_BOSS_RUSH_FOREIGN_SPIKE_TEST")) {rush_foreign_spike_checks(start,cap);return;}
   if(getenv("MMX_BOSS_RUSH_RHINO_TEST")) {rush_rhino_checks(start,cap,getenv("MMX_BOSS_RUSH_X3_ROM"));return;}
+  if(getenv("MMX_BOSS_RUSH_SPONGE_TEST")) {rush_sponge_checks(start,cap,getenv("MMX_BOSS_RUSH_X2_ROM"));return;}
   if(getenv("MMX_BOSS_RUSH_ARENA_TEST")) {
     MmxBossRushState s=MmxBossRushGetState();
     memset(s.bosses,0,sizeof(s.bosses));memset(s.owner,0,sizeof(s.owner));

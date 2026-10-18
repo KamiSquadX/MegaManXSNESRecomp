@@ -18,7 +18,7 @@ const MmxBossRushDefinition kMmxBossRushBosses[MMX_RUSH_ROSTER]={
   {"MORPH MOTH",0,0,0,2},
   {"WHEEL GATOR",0,0,0,2},
   {"OVERDRIVE OSTRICH",0,0,0,2},
-  {"WIRE SPONGE",0,0,0,2},
+  {"WIRE SPONGE",0x049a29,0x23,0,2},
   {"MAGNA CENTIPEDE",0,0,0,2},
   {"FLAME STAG",0,0,0,2},
   /* X3, by native weapon id. Each init tests its own $1FBC+2*(id-1) byte;
@@ -34,6 +34,7 @@ const MmxBossRushDefinition kMmxBossRushBosses[MMX_RUSH_ROSTER]={
 };
 static MmxBossRushState state;
 static MmxBossRushVisualState visual;
+static MmxBossRushScratchState scratch;
 static MmxBossRushRosterState roster;
 static bool enabled=true;
 static uint32_t offered=MMX_RUSH_X1_MASK;
@@ -45,6 +46,15 @@ void MmxBossRushSetOffered(uint32_t mask) {
 uint32_t MmxBossRushOffered(void) {return offered;}
 void MmxBossRushReset(void) {
   memset(&state,0,sizeof(state));memset(&visual,0,sizeof(visual));memset(&roster,0,sizeof(roster));
+  memset(&scratch,0,sizeof(scratch));
+}
+MmxBossRushScratchState MmxBossRushScratchGetState(void) {return scratch;}
+bool MmxBossRushScratchValidState(const MmxBossRushScratchState *s) {
+  return s && s->active<=2 && !s->reserved[0] && !s->reserved[1] && !s->reserved[2];
+}
+bool MmxBossRushScratchSetState(const MmxBossRushScratchState *s) {
+  if(!MmxBossRushScratchValidState(s)) return false;
+  scratch=*s;return true;
 }
 MmxBossRushVisualState MmxBossRushVisualGetState(void) {return visual;}
 bool MmxBossRushVisualValidState(const MmxBossRushVisualState *s) {

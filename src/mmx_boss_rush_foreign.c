@@ -14,8 +14,10 @@ static size_t sizes[2];
  * Tunnel Rhino (id 23) is the pilot. */
 static uint32_t implemented;
 typedef struct ForeignBody {
-  uint32_t controller,children[MMX_RUSH_FOREIGN_CHILDREN];
-  uint8_t fighting,dying,kinds[MMX_RUSH_FOREIGN_CHILDREN];
+  uint32_t controller,children[MMX_RUSH_FOREIGN_CHILDREN],effects[MMX_RUSH_FOREIGN_CHILDREN];
+  uint8_t fighting,dying,kinds[MMX_RUSH_FOREIGN_CHILDREN],effect_kinds[MMX_RUSH_FOREIGN_CHILDREN];
+  uint32_t scratch,saber_kill;uint8_t scratch_size,saber_value;
+  uint8_t death_field,death_value,death_frames;
 } ForeignBody;
 static ForeignBody bodies[MMX_RUSH_ROSTER];
 enum { MAX_WEAKNESSES=8 };
@@ -77,6 +79,58 @@ bool MmxBossRushForeignSetChild(unsigned id,uint8_t kind,uint32_t controller) {
     if(!b->children[i]) {b->children[i]=controller;b->kinds[i]=kind;return controller!=0;}
   return false;
 }
+bool MmxBossRushForeignSetEffectChild(unsigned id,uint8_t kind,uint32_t controller) {
+  if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || !bodies[id].controller || controller>0xffffff) return false;
+  ForeignBody *b=&bodies[id];
+  for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
+    if(b->effects[i] && b->effect_kinds[i]==kind) {b->effects[i]=controller;return true;}
+  for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
+    if(!b->effects[i]) {b->effects[i]=controller;b->effect_kinds[i]=kind;return controller!=0;}
+  return false;
+}
+uint32_t MmxBossRushForeignEffectChild(unsigned id,uint8_t kind) {
+  if(id>=MMX_RUSH_ROSTER) return 0;
+  for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
+    if(bodies[id].effects[i] && bodies[id].effect_kinds[i]==kind) return bodies[id].effects[i];
+  return 0;
+}
+bool MmxBossRushForeignSetScratch(unsigned id,uint32_t address,unsigned size) {
+  if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || size>MMX_RUSH_SCRATCH_BYTES ||
+      (size && (address<0x7e0000 || (address&0xffffff)+size>0x800000))) return false;
+  bodies[id].scratch=size?address:0;bodies[id].scratch_size=(uint8_t)size;return true;
+}
+unsigned MmxBossRushForeignScratch(unsigned id,uint32_t *address) {
+  if(id>=MMX_RUSH_ROSTER || !bodies[id].scratch_size) return 0;
+  if(address) *address=bodies[id].scratch;
+  return bodies[id].scratch_size;
+}
+bool MmxBossRushForeignSetSaberKill(unsigned id,uint32_t pc,uint8_t value) {
+  if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || pc>0xffffff) return false;
+  bodies[id].saber_kill=pc;bodies[id].saber_value=value;return true;
+}
+bool MmxBossRushForeignSaberKill(unsigned id,uint32_t *pc,uint8_t *value) {
+  if(id>=MMX_RUSH_ROSTER || !bodies[id].saber_kill) return false;
+  if(pc) *pc=bodies[id].saber_kill;
+  if(value) *value=bodies[id].saber_value;
+  return true;
+}
+unsigned MmxBossRushForeignSaberKillReads(const uint32_t **pcs) {
+  static uint32_t reads[MMX_RUSH_ROSTER];unsigned n=0;
+  for(unsigned id=0;id<MMX_RUSH_ROSTER;++id) if(bodies[id].saber_kill) reads[n++]=bodies[id].saber_kill;
+  if(pcs) *pcs=reads;
+  return n;
+}
+bool MmxBossRushForeignSetOwnDeath(unsigned id,uint8_t field,uint8_t value,uint8_t frames) {
+  if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || field>=0x40) return false;
+  bodies[id].death_field=field;bodies[id].death_value=value;bodies[id].death_frames=frames;return true;
+}
+bool MmxBossRushForeignOwnDeath(unsigned id,uint8_t *field,uint8_t *value,uint8_t *frames) {
+  if(id>=MMX_RUSH_ROSTER || !bodies[id].death_frames) return false;
+  if(field) *field=bodies[id].death_field;
+  if(value) *value=bodies[id].death_value;
+  if(frames) *frames=bodies[id].death_frames;
+  return true;
+}
 uint32_t MmxBossRushForeignChild(unsigned id,uint8_t kind) {
   if(id>=MMX_RUSH_ROSTER) return 0;
   for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
@@ -85,7 +139,7 @@ uint32_t MmxBossRushForeignChild(unsigned id,uint8_t kind) {
 }
 /* Relocated bodies whose art, sound and weaknesses are finished. Others run
  * only in developer preview (MMX_BOSS_RUSH_PREVIEW=1 or the test hook). */
-static const uint32_t playable=1u<<23; /* Tunnel Rhino */
+static const uint32_t playable=1u<<13|1u<<23; /* Wire Sponge, Tunnel Rhino */
 static int preview=-1;
 void MmxBossRushForeignSetPreview(bool enabled) {preview=enabled;publish();}
 uint32_t MmxBossRushForeignOffered(void) {
@@ -105,51 +159,64 @@ const MmxBossRushWeakness *MmxBossRushForeignWeakness(unsigned id,unsigned page,
     if(weaknesses[id][i].page==page && weaknesses[id][i].weapon==weapon) return &weaknesses[id][i];
   return NULL;
 }
-static uint32_t palette_hooks[2];
-void MmxBossRushForeignSetPaletteHooks(uint32_t rotate,uint32_t fade) {
-  palette_hooks[0]=rotate;palette_hooks[1]=fade;
+/* Hook registries, appended per relocated boss. */
+#define HOOKS_MAX 16
+static uint32_t palette_pcs[HOOKS_MAX];static bool palette_rotates[HOOKS_MAX];static unsigned palette_count;
+static uint32_t midline_reads[HOOKS_MAX];static unsigned midline_count;
+static MmxBossRushSpawnGuard spawn_guards[HOOKS_MAX];static unsigned spawn_guard_count;
+static MmxBossRushChildGuard child_guards[HOOKS_MAX];static unsigned child_guard_count;
+static uint32_t sound_pcs[HOOKS_MAX];static bool sound_positional[HOOKS_MAX];static unsigned sound_count;
+static MmxBossRushRoomRead room_reads[HOOKS_MAX];static unsigned room_read_count;
+void MmxBossRushForeignResetHooks(void) {
+  palette_count=midline_count=spawn_guard_count=child_guard_count=sound_count=room_read_count=0;
 }
-void MmxBossRushForeignPaletteHooks(uint32_t *rotate,uint32_t *fade) {
-  if(rotate) *rotate=palette_hooks[0];
-  if(fade) *fade=palette_hooks[1];
+void MmxBossRushForeignAddRoomReads(const MmxBossRushRoomRead *reads,unsigned count) {
+  for(unsigned i=0;i<count && room_read_count<HOOKS_MAX;++i) room_reads[room_read_count++]=reads[i];
 }
-static uint32_t midline_reads[8];static unsigned midline_count;
-void MmxBossRushForeignSetMidlineReads(const uint32_t *pcs,unsigned count) {
-  if(count>sizeof(midline_reads)/sizeof(*midline_reads)) count=0;
-  if(count) memcpy(midline_reads,pcs,count*sizeof(*pcs));
-  midline_count=count;
+unsigned MmxBossRushForeignRoomReads(const MmxBossRushRoomRead **reads) {
+  if(reads) *reads=room_reads;
+  return room_read_count;
+}
+void MmxBossRushForeignAddPaletteHooks(uint32_t rotate,uint32_t fade) {
+  if(rotate && palette_count<HOOKS_MAX) {palette_pcs[palette_count]=rotate;palette_rotates[palette_count++]=true;}
+  if(fade && palette_count<HOOKS_MAX) {palette_pcs[palette_count]=fade;palette_rotates[palette_count++]=false;}
+}
+unsigned MmxBossRushForeignPaletteHooks(const uint32_t **pcs,const bool **rotates) {
+  if(pcs) *pcs=palette_pcs;
+  if(rotates) *rotates=palette_rotates;
+  return palette_count;
+}
+void MmxBossRushForeignAddMidlineReads(const uint32_t *pcs,unsigned count) {
+  for(unsigned i=0;i<count && midline_count<HOOKS_MAX;++i) midline_reads[midline_count++]=pcs[i];
 }
 unsigned MmxBossRushForeignMidlineReads(const uint32_t **pcs) {
   if(pcs) *pcs=midline_reads;
   return midline_count;
 }
-static MmxBossRushSpawnGuard spawn_guards[8];static unsigned spawn_guard_count;
-void MmxBossRushForeignSetSpawnGuards(const MmxBossRushSpawnGuard *guards,unsigned count) {
-  if(count>sizeof(spawn_guards)/sizeof(*spawn_guards)) count=0;
-  if(count) memcpy(spawn_guards,guards,count*sizeof(*guards));
-  spawn_guard_count=count;
+void MmxBossRushForeignAddSpawnGuards(const MmxBossRushSpawnGuard *guards,unsigned count) {
+  for(unsigned i=0;i<count && spawn_guard_count<HOOKS_MAX;++i) spawn_guards[spawn_guard_count++]=guards[i];
 }
 unsigned MmxBossRushForeignSpawnGuards(const MmxBossRushSpawnGuard **guards) {
   if(guards) *guards=spawn_guards;
   return spawn_guard_count;
 }
-static MmxBossRushChildGuard child_guards[4];static unsigned child_guard_count;
-void MmxBossRushForeignSetChildGuards(const MmxBossRushChildGuard *guards,unsigned count) {
-  if(count>sizeof(child_guards)/sizeof(*child_guards)) count=0;
-  if(count) memcpy(child_guards,guards,count*sizeof(*guards));
-  child_guard_count=count;
+void MmxBossRushForeignAddChildGuards(const MmxBossRushChildGuard *guards,unsigned count) {
+  for(unsigned i=0;i<count && child_guard_count<HOOKS_MAX;++i) child_guards[child_guard_count++]=guards[i];
 }
 unsigned MmxBossRushForeignChildGuards(const MmxBossRushChildGuard **guards) {
   if(guards) *guards=child_guards;
   return child_guard_count;
 }
-static uint32_t sound_shims[2];
-void MmxBossRushForeignSetSoundShims(uint32_t plain,uint32_t positional) {
-  sound_shims[0]=plain;sound_shims[1]=positional;
+void MmxBossRushForeignAddSoundShims(uint32_t plain,uint32_t positional) {
+  if(plain && sound_count<HOOKS_MAX) {sound_pcs[sound_count]=plain;sound_positional[sound_count++]=false;}
+  if(positional && positional!=plain && sound_count<HOOKS_MAX) {
+    sound_pcs[sound_count]=positional;sound_positional[sound_count++]=true;
+  }
 }
-void MmxBossRushForeignSoundShims(uint32_t *plain,uint32_t *positional) {
-  if(plain) *plain=sound_shims[0];
-  if(positional) *positional=sound_shims[1];
+unsigned MmxBossRushForeignSoundShims(const uint32_t **pcs,const bool **positional) {
+  if(pcs) *pcs=sound_pcs;
+  if(positional) *positional=sound_positional;
+  return sound_count;
 }
 void MmxBossRushForeignSync(void) {
   if(!dirty || !MmxCartPatchAvailable()) return;

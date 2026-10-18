@@ -14,6 +14,10 @@ typedef struct MmxRelocBlob {uint32_t at;uint16_t offset,size;} MmxRelocBlob;
 typedef struct MmxRelocPatch {uint32_t at;uint8_t size;uint32_t expected,value;} MmxRelocPatch;
 typedef struct MmxRelocChild {uint8_t kind;uint32_t controller;} MmxRelocChild;
 #include "mmx_boss_rush_x3_rhino.inc"
+#include "mmx_boss_rush_x2_sponge.inc"
+#ifndef MMX_SPONGE_ENTRY_Y
+#define MMX_SPONGE_ENTRY_Y 0x20
+#endif
 
 typedef struct MmxRelocBoss {
   const char *name;
@@ -33,10 +37,16 @@ typedef struct MmxRelocBoss {
   const uint32_t *midline;size_t midline_count; /* room-half tests (LDA $05) */
   const MmxBossRushSpawnGuard *spawns;size_t spawn_count;
   const MmxBossRushChildGuard *child_guards;size_t child_guard_count;
+  const MmxRelocChild *effect_children;size_t effect_child_count; /* $1928 list */
+  uint32_t scratch;unsigned scratch_size; /* work RAM body and children share */
+  uint32_t saber_kill;uint8_t saber_value; /* death test that reads the killing class */
+  const MmxBossRushRoomRead *room_reads;size_t room_read_count;
+  uint8_t death_field,death_value,death_frames; /* own death sequence */
 } MmxRelocBoss;
 #define COUNT(a) (sizeof(a)/sizeof(*(a)))
-/* X1 shot classes: Homing Torpedo $0E, Shotgun Ice $07; charged +9. */
-enum { X1_ICE=0x07, X1_TORPEDO=0x0e, CHARGED=9 };
+/* X1 shot classes: weapon n fires class $0F-n (Homing Torpedo $0E, Fire
+ * Wave $0B, Shotgun Ice $07); charged +9. */
+enum { X1_ICE=0x07, X1_FIRE=0x0b, X1_TORPEDO=0x0e, CHARGED=9 };
 /* Rhino runs on Kuwanger's X1 row, whose weakness column is Homing Torpedo's.
  * His original X3 weakness, Acid Burst, takes that column and reports the
  * Torpedo reaction his relocated flinch test looks for. Homing Torpedo
@@ -62,6 +72,19 @@ static const MmxBossRushSpawnGuard k_rhino_spawns[]={{0x3fec08,0x3d,0},{0x3fea85
  * charge spawns a carrier on every frame it overlaps the player ($E994);
  * X3's caught player stops overlapping, X1's does not, so spawn one. */
 static const MmxBossRushChildGuard k_rhino_child_guards[]={{0x3feb78,0x26,0x3c,2},{0x3fe994,0x26,0x3c,2}};
+/* Wire Sponge runs on Chill Penguin's X1 row, whose weakness column is
+ * Fire Wave's class $0B/$14: the same classes X2's Sonic Slicer has, so his
+ * relocated flinch and split tests need no change. Fire Wave itself moves to
+ * an ordinary column (Ice). */
+static const MmxBossRushWeakness k_sponge_weaknesses[]={
+  {1,5,{X1_FIRE,X1_FIRE+CHARGED},{X1_FIRE,X1_FIRE+CHARGED}}, /* X2 Sonic Slicer */
+  {0,4,{X1_ICE,X1_ICE+CHARGED},{X1_ICE,X1_ICE+CHARGED}},     /* X1 Fire Wave */
+};
+/* His entrance drops him from the top of X2's 256-pixel room ($04:9ADB),
+ * which is open sky there; the Rush arena has a ceiling. Start below it, so
+ * the fall lasts long enough for his vine to finish lowering (its segment
+ * count $7F:CD90 counts down every 6 frames while he falls). */
+static const MmxBossRushRoomRead k_sponge_rooms[]={{0xb59adb,1,MMX_SPONGE_ENTRY_Y}};
 static const MmxRelocBoss kBosses[]={
   {"TUNNEL RHINO",3,k_rhino_roster_id,k_rhino_body,2,4,
    k_rhino_banks,COUNT(k_rhino_banks),k_rhino_copies,COUNT(k_rhino_copies),
@@ -71,10 +94,25 @@ static const MmxRelocBoss kBosses[]={
    k_rhino_weaknesses,COUNT(k_rhino_weaknesses),
    /* X3 $13:F7D6 rotates OBJ colors 1-15; $13:F7FC fades them back. */
    0x33f7d6,0x33f7fc,k_rhino_midline,COUNT(k_rhino_midline),
-   k_rhino_spawns,COUNT(k_rhino_spawns),k_rhino_child_guards,COUNT(k_rhino_child_guards)},
+   k_rhino_spawns,COUNT(k_rhino_spawns),k_rhino_child_guards,COUNT(k_rhino_child_guards),
+   k_rhino_effect_children,k_rhino_effect_child_count,0,0,0,0,NULL,0,0,0,0},
+  {"WIRE SPONGE",2,k_sponge_roster_id,k_sponge_body,2,4,
+   k_sponge_banks,COUNT(k_sponge_banks),k_sponge_copies,COUNT(k_sponge_copies),
+   k_sponge_shim_code,k_sponge_blobs,COUNT(k_sponge_blobs),
+   k_sponge_patches,COUNT(k_sponge_patches),k_sponge_children,COUNT(k_sponge_children),
+   k_sponge_sound_bank,k_sponge_sfx,k_sponge_sfx_pan,k_sponge_effects,COUNT(k_sponge_effects),
+   k_sponge_weaknesses,COUNT(k_sponge_weaknesses),0,0,NULL,0,NULL,0,NULL,0,
+   k_sponge_effect_children,k_sponge_effect_child_count,
+   /* $7F:CD90-$7F:CD96: state his body, whip and bolts share. */
+   0x7fcd90,7,
+   /* $04:A70C LDA $3D: his last hit's class; $0B splits him in two. */
+   0xb5a70c,X1_FIRE,k_sponge_rooms,COUNT(k_sponge_rooms),
+   /* Death path $3B = 6 splits him in two: fall, land, 30 frames, the halves
+   * part, 60 frames, then his explosion. */
+   0x3b,6,180},
 };
 /* Zero/sink area for X3-only globals: reads see zero, writes hit ROM. */
-enum { ZERO_AREA=0x86fd40, ZERO_SIZE=0x200 };
+enum { ZERO_AREA=0x86fe40, ZERO_SIZE=0x100 };
 
 static bool source(const uint8_t *rom,size_t size,uint32_t address,size_t n,const uint8_t **out) {
   if((address&0xffff)<0x8000) return false;
@@ -128,24 +166,36 @@ static bool build(const MmxRelocBoss *boss,const uint8_t *rom,size_t size,char *
     if(!MmxBossRushForeignSetChild(boss->roster_id,boss->children[i].kind,boss->children[i].controller)) {
       snprintf(error,cap,"%s: cannot register projectile $%02X",boss->name,boss->children[i].kind);return false;
     }
+  for(size_t i=0;i<boss->effect_child_count;++i)
+    if(!MmxBossRushForeignSetEffectChild(boss->roster_id,boss->effect_children[i].kind,
+        boss->effect_children[i].controller)) {
+      snprintf(error,cap,"%s: cannot register effect $%02X",boss->name,boss->effect_children[i].kind);return false;
+    }
+  if(!MmxBossRushForeignSetScratch(boss->roster_id,boss->scratch,boss->scratch_size) ||
+      (boss->saber_kill && !MmxBossRushForeignSetSaberKill(boss->roster_id,boss->saber_kill,boss->saber_value))) {
+    snprintf(error,cap,"%s: cannot register its shared state",boss->name);return false;
+  }
   /* Its X3 sound calls are hooked shims; render those effects from its own
    * driver and sound bank. A failed cache leaves the boss silent. */
   if(!MmxBossRushForeignSetWeaknesses(boss->roster_id,boss->weaknesses,(unsigned)boss->weakness_count)) {
     snprintf(error,cap,"%s: cannot register its weaknesses",boss->name);return false;
   }
-  MmxBossRushForeignSetSoundShims(boss->sfx,boss->sfx_pan);
-  MmxBossRushForeignSetPaletteHooks(boss->palette_rotate,boss->palette_fade);
-  MmxBossRushForeignSetMidlineReads(boss->midline,(unsigned)boss->midline_count);
-  MmxBossRushForeignSetSpawnGuards(boss->spawns,(unsigned)boss->spawn_count);
-  MmxBossRushForeignSetChildGuards(boss->child_guards,(unsigned)boss->child_guard_count);
+  MmxBossRushForeignAddSoundShims(boss->sfx,boss->sfx_pan);
+  MmxBossRushForeignAddPaletteHooks(boss->palette_rotate,boss->palette_fade);
+  MmxBossRushForeignAddMidlineReads(boss->midline,(unsigned)boss->midline_count);
+  MmxBossRushForeignAddSpawnGuards(boss->spawns,(unsigned)boss->spawn_count);
+  MmxBossRushForeignAddChildGuards(boss->child_guards,(unsigned)boss->child_guard_count);
+  MmxBossRushForeignAddRoomReads(boss->room_reads,(unsigned)boss->room_read_count);
+  if(boss->death_frames &&
+      !MmxBossRushForeignSetOwnDeath(boss->roster_id,boss->death_field,boss->death_value,boss->death_frames)) {
+    snprintf(error,cap,"%s: cannot register its death sequence",boss->name);return false;
+  }
   MmxBossRushAudioPrepareForeign(boss->roster_id,rom,size,boss->sound_bank,boss->effects,(unsigned)boss->effect_count);
   return true;
 }
 bool MmxBossRushForeignBuild(char *error,size_t cap) {
   for(size_t i=0;i<COUNT(kBosses);++i) MmxBossRushForeignSetController(kBosses[i].roster_id,0);
-  MmxBossRushForeignSetSoundShims(0,0);MmxBossRushForeignSetPaletteHooks(0,0);
-  MmxBossRushForeignSetMidlineReads(NULL,0);MmxBossRushForeignSetSpawnGuards(NULL,0);
-  MmxBossRushForeignSetChildGuards(NULL,0);
+  MmxBossRushForeignResetHooks();
   MmxCartExtensionClear();
   if(!MmxCartPatchAvailable()) {
     snprintf(error,cap,"The loaded Mega Man X image cannot host relocated bosses.");return false;

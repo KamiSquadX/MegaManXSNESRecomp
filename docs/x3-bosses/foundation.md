@@ -4,14 +4,15 @@ Goal: all 24 Mavericks (X1, X2, X3) in Boss Rush, then later the full X2 and
 X3 stages inside the X1 recomp, with L/R on the stage-select map switching
 between the three games' maps so every Maverick can be fought in any order.
 This document covers the Boss Rush foundation and the execution plan that
-should carry over to full stages. Rhino's source trace:
-[tunnel-rhino.md](tunnel-rhino.md).
+should carry over to full stages. Source traces:
+[tunnel-rhino.md](tunnel-rhino.md) (X3) and
+[wire-sponge.md](../x2-bosses/wire-sponge.md) (X2).
 
 ## Roster (implemented)
 
 - Roster ids: `0..7` X1 (unchanged order), `8..15` X2, `16..23` X3, each game
   ordered by its native weapon id (`kMmxBossRushBosses` in
-  `src/mmx_boss_rush.c`). X2 controllers are not traced yet.
+  `src/mmx_boss_rush.c`).
 - `MmxBossRushRosterState` holds the shuffle queue for up to 24 bosses and
   the run's **available** set. The available set is copied from the offered
   set when a run starts, so launcher edits cannot change a run in progress
@@ -28,14 +29,14 @@ should carry over to full stages. Rhino's source trace:
 
 - Package `megaman-x.boss-rush.x3-bosses` (Game Modes, off by default) asks
   for the X3 USA ROM using the shared `megaman-x.source.x3` selection.
-  An X2 package uses the same plugin (`megaman-x.boss-rush.x2-bosses`) and
-  will be added with the first X2 boss.
+  Package `megaman-x.boss-rush.x2-bosses` does the same for the X2 USA ROM
+  (`megaman-x.source.x2`) through the same plugin.
 - `src/mods/mmx_boss_rush_foreign_plugin.c` validates the ROM with the same
   checksum rules as the other packs (`MmxSourceRomLoad`) and keeps the image
   **in memory only**.
 - `src/mmx_boss_rush_foreign.c` offers a boss to new runs only when its pack
-  is loaded **and** its body is implemented. No X2/X3 body exists yet, so
-  runs stay X1-only even with the pack enabled.
+  is loaded **and** its body is implemented (Wire Sponge and Tunnel Rhino
+  so far).
 - Netplay refuses to start when an enabled Maverick pack failed to load.
 
 ## Running X2/X3 boss code (next)
@@ -119,7 +120,8 @@ that bank. Rhino therefore runs with X1's `$86`:
 | `$33`, `$38`, `$34`, `$32` (X3 `$13`, `$08`, `$04`, `$02`) | palette helpers, drill class `$26`, X3 animation/motion/overlap helpers |
 | `$86:FA80`-`$FAFF` | shims (`RTL`, finished fade, resume combat, delete, class init) |
 | `$86:FB00`-`$FBB2` | his `$86` tables: body/drill hitboxes, drill spawn tables, angle table |
-| `$86:FD40`-`$FF3F` | zero/sink area for X3-only globals (`$86:FD40` + low 9 bits) |
+| `$86:FBC0`-`$FE2B` | Wire Sponge's shims (`$FBC0`) and `$86` tables (`$FC50`) |
+| `$86:FE40`-`$FF3F` | shared zero/sink area for X2/X3-only globals (`$86:FE40` + low 8 bits) |
 | `$86:FF40`-`$FFFF` | not ours: air saber `$FF40`, weapon boxes `$FF80`, saber wave `$FFA0`, Zero bounds `$FFB0`, ground saber `$FFD8` |
 
 All copied banks sit in X1's unused `$30`-`$3F` padding; the `$86` tail is
@@ -335,14 +337,47 @@ provide this trusted plugin"): MSVC drops snesrecomp's unreferenced *static*
 `SNES_MOD_CONSTRUCTOR` with an external pointer plus a `/include` linker
 directive; the proper fix belongs in snesrecomp's `mod_runtime.h`.
 
+## Wire Sponge relocation (X2, 2026-10-18)
+
+X2 shares the engine generation too, so `tools/relocate_boss.py` now takes a
+per-game config (`Game`: bank map, helper map, RAM map, globals to sink,
+long addresses to keep, animation directory). X2's helpers map to the same
+X1 routines as X3's; the X3 config still produces Rhino's output byte for
+byte. `relocate_boss.py sponge <X2 ROM> src/mmx_boss_rush_x2_sponge.inc`
+writes 3,255 traced instructions and 438 patches across X1 banks `$35`-`$3B`.
+
+New relocation rules found by Wire Sponge:
+
+- hardware registers pass through; `MVN` block moves are redirected;
+- hitbox pointers stored to `+$20` must be relocated (unrelocated ones made
+  him clip through walls mid-dash), and data tables may be copied as windows
+  of a larger table with the base pointer remapped;
+- profile loads ahead of `STA $28` are found through A-preserving
+  instructions and conditional loads;
+- the animation directory's bank bytes are patched per sprite set.
+
+New runtime hooks, each registered per boss (the registries are lists, so
+several relocated bosses coexist):
+
+| Hook | Purpose |
+| --- | --- |
+| Effect children | X1's effect list dispatch (`JSR ($F3B9,x)` at `$80:D359`/`$D380`) runs a foreign seat's own effect classes |
+| Room reads | `LDA camera; AND #$1F00` answers with the arena origin plus an offset |
+| Scratch | a seat's private window of shared work RAM (`$7F:CD90`), swapped in and out around its objects; saved as `MmxBossRushScratchState` (chunk **v24**) |
+| Saber kill | Zero's saber hits read as a chosen class in a body's death test |
+| Own death | Rush waits for a body's own death sequence before its explosion |
+| `stockdeath` shim | replaces the source game's stock death scene |
+
+The zero area moved to `$86:FE40` (256 bytes) to make room for his tables.
+
 ## Remaining foundation pieces
 
 - Foreign body spawn in a Rush seat: done for registered controllers (X1
   boss class byte `$02`, so class-indexed native tables stay in range).
 - Private art for foreign bodies: done for relocated bodies (pose-level;
   bosses whose source art streams per-pose DMA will need that path).
-- Foreign sound effects: done for relocated X3 bodies (X2's driver still
-  needs checking). The shared `$86` shim and table area is laid out per
-  boss today; a second relocated boss needs its own region.
+- Foreign sound effects: done for relocated X2 and X3 bodies. The `$86`
+  shim and table area is laid out per boss and is nearly full after Wire
+  Sponge; further bosses need a new home for their `$86` tables.
 - Weaknesses for relocated bodies: original weakness done for Rhino; the
   owner's X1/X2/X3 assignments come after all 24 bosses.

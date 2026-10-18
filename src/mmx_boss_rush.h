@@ -16,6 +16,8 @@ enum { MMX_RUSH_MAMMOTH_SCROLL=0x70,
   MMX_RUSH_ARENA_CENTER_X=(256+MMX_RUSH_MAMMOTH_SCROLL)/2 };
 typedef struct MmxBossRushBoss {
   uint16_t object, ticks;
+  /* reserved: frames of a relocated boss's own death sequence that precede
+   * Rush's explosion (0 = none). */
   uint8_t id, phase, health, reserved;
   uint32_t generation;
   int16_t death_x, death_y;
@@ -47,6 +49,16 @@ bool MmxBossRushVisualSetState(const MmxBossRushVisualState *state);
 /* direction: 0 initializes black, +1 restores colors, -1 fades to black. */
 void MmxBossRushVisualFade(unsigned owner, uint32_t generation,
     const uint16_t target[16], int direction);
+/* Work RAM shared by a relocated boss's objects (its scratch window, see
+ * MmxBossRushForeignSetScratch): each seat's private bytes, and X1's own
+ * bytes while a seat's copy is swapped in (`active` = seat + 1). */
+typedef struct MmxBossRushScratchState {
+  uint8_t seat[2][16], world[16];
+  uint8_t active, reserved[3];
+} MmxBossRushScratchState;
+MmxBossRushScratchState MmxBossRushScratchGetState(void);
+bool MmxBossRushScratchValidState(const MmxBossRushScratchState *state);
+bool MmxBossRushScratchSetState(const MmxBossRushScratchState *state);
 /* Rotate colors 1..15 forward by one (15 wraps to 1), as Tunnel Rhino's
  * drill charge does to its OBJ palette; initialized from target. */
 void MmxBossRushVisualRotate(unsigned owner,uint32_t generation,const uint16_t target[16]);

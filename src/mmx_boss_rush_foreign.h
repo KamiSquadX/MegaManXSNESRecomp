@@ -24,11 +24,32 @@ void MmxBossRushForeignStates(unsigned id,uint8_t *fighting,uint8_t *dying);
 /* Controllers for the boss's own projectile classes (enemy-projectile list). */
 enum { MMX_RUSH_FOREIGN_CHILDREN=4 };
 bool MmxBossRushForeignSetChild(unsigned id,uint8_t kind,uint32_t controller);
+/* Controllers for the boss's effect-list classes ($1928 list). */
+bool MmxBossRushForeignSetEffectChild(unsigned id,uint8_t kind,uint32_t controller);
+uint32_t MmxBossRushForeignEffectChild(unsigned id,uint8_t kind);
+/* Work RAM a body and its children share (e.g. X2 Wire Sponge's $7F:CD90):
+ * Rush keeps a private copy per seat and swaps it in only while that boss's
+ * objects run, so X1's own use of those bytes is untouched. */
+enum { MMX_RUSH_SCRATCH_BYTES=16 };
+bool MmxBossRushForeignSetScratch(unsigned id,uint32_t address,unsigned size);
+unsigned MmxBossRushForeignScratch(unsigned id,uint32_t *address);
+/* Zero's saber has no class of its own (its hits are class $03 shots tagged
+ * $5A53, or Saber Zero's attack and wave families). For a body that asks, a
+ * saber hit reports MMX_RUSH_SABER_MARKER as its reaction class; the body's relocated death test (`LDA dp` at `pc`)
+ * then reads `value` instead, e.g. Wire Sponge's Sonic Slicer split. */
+enum { MMX_RUSH_SABER_MARKER=0x7e };
+bool MmxBossRushForeignSetSaberKill(unsigned id,uint32_t pc,uint8_t value);
+bool MmxBossRushForeignSaberKill(unsigned id,uint32_t *pc,uint8_t *value);
+/* Every registered saber-kill read, for hook registration. */
+unsigned MmxBossRushForeignSaberKillReads(const uint32_t **pcs);
 uint32_t MmxBossRushForeignChild(unsigned id,uint8_t kind);
+/* Relocated-boss hook registries: MmxBossRushForeignBuild resets them and
+ * every relocated boss adds its own entries (several can be loaded). */
+void MmxBossRushForeignResetHooks(void);
 /* Shim addresses standing in for the source game's sound-effect calls
  * (plain and positional); the runtime hooks them to queue cached clips. */
-void MmxBossRushForeignSetSoundShims(uint32_t plain,uint32_t positional);
-void MmxBossRushForeignSoundShims(uint32_t *plain,uint32_t *positional);
+void MmxBossRushForeignAddSoundShims(uint32_t plain,uint32_t positional);
+unsigned MmxBossRushForeignSoundShims(const uint32_t **pcs,const bool **positional);
 /* Weaknesses of a relocated body against one weapon (page 0 X1, 1 X2, 2 X3;
  * see MmxWeaponsShotIdentity). `damage` picks the X1 damage column in its
  * row; `reaction` is the class its own weakness test sees in $1F1D. */
@@ -39,12 +60,12 @@ bool MmxBossRushForeignSetWeaknesses(unsigned id,const MmxBossRushWeakness *rule
 const MmxBossRushWeakness *MmxBossRushForeignWeakness(unsigned id,unsigned page,unsigned weapon);
 /* Relocated palette helpers Rush runs privately per seat: one rotates the
  * body's colors, the other fades them back (carry set while unfinished). */
-void MmxBossRushForeignSetPaletteHooks(uint32_t rotate,uint32_t fade);
-void MmxBossRushForeignPaletteHooks(uint32_t *rotate,uint32_t *fade);
+void MmxBossRushForeignAddPaletteHooks(uint32_t rotate,uint32_t fade);
+unsigned MmxBossRushForeignPaletteHooks(const uint32_t **pcs,const bool **rotates);
 /* Relocated `LDA $05`/`EOR $05` reads where an X2/X3 body tests which half of its
  * room it is in: their rooms start on 256-pixel boundaries, so bit 7 of the
  * X low byte is the midline. Rush answers them relative to its arena. */
-void MmxBossRushForeignSetMidlineReads(const uint32_t *pcs,unsigned count);
+void MmxBossRushForeignAddMidlineReads(const uint32_t *pcs,unsigned count);
 unsigned MmxBossRushForeignMidlineReads(const uint32_t **pcs);
 /* X2/X3 bodies keep a count of their live children and assume every spawn
  * succeeds; in their own games the pool never runs out, but in Rush two
@@ -57,7 +78,7 @@ typedef struct MmxBossRushSpawnGuard {
   uint32_t pc;
   uint8_t counter, remaining;
 } MmxBossRushSpawnGuard;
-void MmxBossRushForeignSetSpawnGuards(const MmxBossRushSpawnGuard *guards,unsigned count);
+void MmxBossRushForeignAddSpawnGuards(const MmxBossRushSpawnGuard *guards,unsigned count);
 unsigned MmxBossRushForeignSpawnGuards(const MmxBossRushSpawnGuard **guards);
 /* X3 has a "caught" player state that X1 lacks: relocated bodies see X1's
  * ordinary hurt state in its place, and the caught player stays tangible.
@@ -70,8 +91,24 @@ typedef struct MmxBossRushChildGuard {
   uint32_t pc;
   uint8_t kind, field, value;
 } MmxBossRushChildGuard;
-void MmxBossRushForeignSetChildGuards(const MmxBossRushChildGuard *guards,unsigned count);
+void MmxBossRushForeignAddChildGuards(const MmxBossRushChildGuard *guards,unsigned count);
 unsigned MmxBossRushForeignChildGuards(const MmxBossRushChildGuard **guards);
+/* A relocated room-origin read: `LDA camera; AND #$1F00` (X2/X3 rooms start
+ * on 256-pixel boundaries). Rush answers with its arena's left edge (axis 0)
+ * or top edge (axis 1) plus `offset`, e.g. to start an entrance below the
+ * arena's ceiling instead of inside it, and skips both instructions. */
+typedef struct MmxBossRushRoomRead {
+  uint32_t pc;
+  uint8_t axis;
+  int16_t offset;
+} MmxBossRushRoomRead;
+void MmxBossRushForeignAddRoomReads(const MmxBossRushRoomRead *reads,unsigned count);
+unsigned MmxBossRushForeignRoomReads(const MmxBossRushRoomRead **reads);
+/* A death sequence the body plays itself (e.g. Wire Sponge splitting in two)
+ * while its object's `field` holds `value` (or 0, before it chooses): Rush
+ * lets its controller run for `frames` before its own explosion and cleanup. */
+bool MmxBossRushForeignSetOwnDeath(unsigned id,uint8_t field,uint8_t value,uint8_t frames);
+bool MmxBossRushForeignOwnDeath(unsigned id,uint8_t *field,uint8_t *value,uint8_t *frames);
 /* Rebuild every relocated body for the loaded source ROMs into the cart's
  * patch windows (mmx_boss_rush_relocate.c). Restores the cart first. */
 bool MmxBossRushForeignBuild(char *error,size_t error_size);
