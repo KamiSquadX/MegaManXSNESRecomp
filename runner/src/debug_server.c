@@ -8767,6 +8767,17 @@ static void process_command(char *line) {
 // ---- Public API ----
 
 int debug_server_init(int port) {
+    /* Own this override here so title-specific hosts using a fixed default
+     * participate in the same isolated tooling sessions as host_main.c. */
+    const char *port_env = getenv("SNESRECOMP_DEBUG_PORT");
+    if (port_env && port_env[0]) {
+        char *end = NULL;
+        long selected = strtol(port_env, &end, 10);
+        if (end != port_env && *end == '\0' && selected > 0 && selected <= 65535)
+            port = (int)selected;
+        else
+            fprintf(stderr, "[debug_server] invalid SNESRECOMP_DEBUG_PORT; using %d\n", port);
+    }
 #ifdef _WIN32
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return -1;
