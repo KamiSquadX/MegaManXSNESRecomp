@@ -137,6 +137,17 @@ static void actor_hook(CpuState *cpu,uint32_t pc) {
   }
   MmxBossRushSetState(&s);
 }
+/* Seats whose boss queued the native boss-hurt sound ($13) this frame. */
+static bool hurt_sounded[2];
+/* Queue a native sound effect as $80:88A2 does: ring $0B72, pan from the
+ * emitter's distance to the player. */
+static void queue_native_sound(uint8_t *r,unsigned object,uint8_t command) {
+  int diff=((int)word(r+object+5)-(int)word(r+0xbad))>>1;
+  if(diff<-127) diff=-127;
+  if(diff>127) diff=127;
+  unsigned x=r[0xba3]&0x1e;
+  r[0xb72+x]=command;r[0xb73+x]=(uint8_t)diff;r[0xba3]=(uint8_t)((x+2)&0x1e);
+}
 static void boss_hook(CpuState *cpu,uint32_t pc) {
   MmxBossRushState s=MmxBossRushGetState();int owner=MmxBossRushOwner(cpu->D);
   unsigned at=pc&0x7fffff;
@@ -213,6 +224,10 @@ static void boss_hook(CpuState *cpu,uint32_t pc) {
   }
   if(at==0x0088d6 && playing() && getenv("MMX_BOSS_RUSH_AUDIO_TRACE")) {
     fprintf(stderr,"rush-sfx frame=%d actor=%u object=%04x command=%02x pan=%02x\n",snes_frame_counter,s.actor,cpu->D,cpu->A&255,cpu->Y&255);
+  }
+  if(at==0x0088d6 && playing() && (cpu->A&255)==0x13) {
+    int seat=owner>=0?owner:(int)s.actor-1;
+    if(seat>=0 && seat<2) hurt_sounded[seat]=true;
   }
   unsigned emitter=owner==(int)s.actor-1 ? cpu->D : s.actor_object;
   if(at==0x0088d6 && playing() && s.actor &&
@@ -825,8 +840,15 @@ void MmxBossRushAfterFrame(uint8_t *r) {
   if(!playing()) return;
   MmxBossRushState s=MmxBossRushGetState();
   for(unsigned i=0;i<2;++i) {
-    MmxBossRushBoss *b=&s.bosses[i];if(!b->phase) continue;
+    MmxBossRushBoss *b=&s.bosses[i];
+    bool sounded=hurt_sounded[i];hurt_sounded[i]=false;
+    if(!b->phase) continue;
     unsigned native=r[b->object+1],hp=r[b->object+0x27]&127;
+    /* A boss plays its hurt sound when a hit starts its damage flash. Combo
+     * follow-ups (Zero's saber priority) land inside that flash, where only
+     * the impact sound repeats; give each one the hurt sound too. */
+    if(b->phase==MMX_RUSH_FIGHTING && hp && hp<b->health && !sounded && r[b->object])
+      queue_native_sound(r,b->object,0x13);
     /* X1: state 4 is ordinary combat, 8 is a hit reaction and 6 is death.
      * Watching only state 4 misses a boss hit as its entrance completes.
      * Relocated X2/X3 bodies register their own combat and death states. */

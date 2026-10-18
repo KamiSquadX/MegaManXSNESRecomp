@@ -1137,6 +1137,59 @@ static void rush_replay_play(const char *name) {
   if(replay) fclose(replay);
   fprintf(stderr,"play done after %u frames: bd8=%02x c32=%02x c13=%02x\n",inputs,g_ram[0xbd8],g_ram[0xc32],g_ram[0xc13]);
 }
+/* MMX_BOSS_RUSH_COMBO_SOUND_TEST: Zero's attack chain (Y) on a boss
+ * (MMX_COMBO_BOSS roster id, default Flame Mammoth). Every landed hit,
+ * including combo follow-ups inside the boss's damage flash, must queue the
+ * boss-hurt sound $13 in the native sound ring ($0B72). */
+static void rush_combo_sound_checks(void) {
+  const char *boss_text=getenv("MMX_COMBO_BOSS");unsigned boss=boss_text?(unsigned)atoi(boss_text):4;
+  if(boss>=8) {
+    MmxBossRushForeignSetPreview(true);
+    MmxBossRushRosterState roster={.available=MMX_RUSH_X1_MASK|(1u<<boss),.queued=2};
+    roster.queue[0]=(uint8_t)boss;roster.queue[1]=0;
+    check(MmxBossRushRosterSetState(&roster),"combo sound fixture queues the relocated boss");
+  } else {
+    MmxBossRushState s=MmxBossRushGetState();
+    uint8_t queue[]={(uint8_t)boss,boss?0:1,1,3,2,5,6,7};
+    memcpy(s.queue,queue,sizeof(queue));s.queued=8;
+    check(MmxBossRushSetState(&s),"combo sound fixture queues the boss");
+  }
+  MmxBossRushState s=MmxBossRushGetState();
+  unsigned seat=2;
+  for(unsigned t=0;t<2400 && seat==2;++t) {
+    frame(0);rush_keep_players_alive();s=MmxBossRushGetState();
+    for(unsigned i=0;i<2;++i) if(s.bosses[i].id==boss && s.bosses[i].phase==MMX_RUSH_FIGHTING) seat=i;
+  }
+  check(seat<2,"combo sound fixture reaches combat");
+  unsigned body=s.bosses[seat].object,hits=0,silent=0,hp=g_ram[body+0x27]&127;
+  for(unsigned t=0;t<240;++t) {
+    s=MmxBossRushGetState();unsigned other=s.bosses[seat^1].object;
+    /* The boss stands beside the player; the other stays out of reach. */
+    eagle_putword(g_ram+body+5,eagle_word(g_ram+0xbad)+20);eagle_putword(g_ram+body+8,eagle_word(g_ram+0xbb0));
+    if(other) eagle_putword(g_ram+other+5,eagle_word(g_ram+0xbad)-200);
+    g_ram[body+0x26]=0;if(other) g_ram[other+0x26]=0;
+    g_ram[0xbd8]=g_ram[0xc32]=8;g_ram[0xc13]=0x3c;g_ram[0xbb9]|=64u; /* protected, facing right */
+    unsigned ring=g_ram[0xba3]&0x1e;
+    frame(t%10<2?SNES_PAD_Y:0);rush_keep_players_alive();
+    bool sounded=false;
+    for(unsigned x=ring;x!=(g_ram[0xba3]&0x1eu);x=(x+2)&0x1e) sounded|=g_ram[0xb72+x]==0x13;
+    unsigned now=g_ram[body+0x27]&127;
+    if(now<hp) {
+      ++hits;if(!sounded) ++silent;
+      fprintf(stderr,"combo hit t=%u hp=%u->%u state=%02x/%02x hurt-sound=%u\n",t,hp,now,
+          g_ram[body+1],g_ram[body+2],sounded);
+    }
+    hp=now;
+    if(now<8) {g_ram[body+0x27]=(uint8_t)((g_ram[body+0x27]&128)|32);hp=32;}
+  }
+  fprintf(stderr,"combo sounds: hits=%u silent=%u\n",hits,silent);
+  /* Saber Zero's priority combos land inside the damage flash; other
+   * characters land one hit per flash. */
+  const char *who=getenv("MMX_BOSS_RUSH_RHINO_CHARACTER");
+  check(hits>=(who && !strcmp(who,"saber")?4u:1u),"the attack chain lands its hits");
+  check(!silent,"every landed combo hit plays the boss-hurt sound");
+  puts("MMX BOSS RUSH COMBO SOUND CHECKS PASSED");
+}
 static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual,size_t cap) {
   rush_rhino_launcher();
   if(getenv("MMX_REPLAY_SCAN")) {rush_replay_scan(getenv("MMX_REPLAY_SCAN"));return;}
@@ -1335,6 +1388,7 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
   if(getenv("MMX_BOSS_RUSH_HIT_VISUAL_TEST") || getenv("MMX_BOSS_RUSH_HIT_AUDIO_TEST")) {rush_hit_visual_checks(start,expected,cap);return;}
   if(getenv("MMX_BOSS_RUSH_CHAMELEON_TEST")) {rush_chameleon_replacement_checks(start,cap);return;}
   if(getenv("MMX_BOSS_RUSH_DEATH_LATCH_TEST")) {rush_death_latch_checks();return;}
+  if(getenv("MMX_BOSS_RUSH_COMBO_SOUND_TEST")) {rush_combo_sound_checks();return;}
   if(getenv("MMX_BOSS_RUSH_REPLACEMENT_VISUAL_TEST") || getenv("MMX_BOSS_RUSH_PAUSE_VISUAL_TEST")) {
     rush_replacement_menu_checks(start,expected,cap);return;
   }
