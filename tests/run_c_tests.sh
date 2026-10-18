@@ -463,6 +463,7 @@ echo "=== account secret path (rebuild must not sign you out) ==="
     "$ROOT/lib/recomp-net/src/auth/rnet_auth.c" \
     "$ROOT/lib/recomp-net/src/auth/rnet_open_url.c" \
     "$ROOT/lib/recomp-net/src/auth/rnet_sha256.c" \
+    "$ROOT/lib/recomp-net/src/platform/rnet_platform.c" \
     -lpthread -o "$OUT/secret_path_test"
 "$OUT/secret_path_test"
 
