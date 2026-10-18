@@ -13,10 +13,14 @@ import time
 
 
 class FrameDriver:
-    def __init__(self, client, output: Path, *, max_step_frames=60):
+    def __init__(self, client, output: Path, *, max_step_frames=60,
+                 step_timeout=30):
         if type(max_step_frames) is not int or not 1 <= max_step_frames <= 60:
             raise ValueError("Step batch must be between 1 and 60 frames")
         self.max_step_frames = max_step_frames
+        if not 0 < step_timeout <= 60:
+            raise ValueError("Step timeout must be above zero and at most 60 seconds")
+        self.step_timeout = step_timeout
         self.client = client
         self.output = Path(output)
         self.output.mkdir(parents=True, exist_ok=True)
@@ -52,6 +56,13 @@ class FrameDriver:
             result = self.command("step 1")
             # The first request races an already-running frame. It may observe
             # that frame plus its requested frame before the stop takes effect.
+            # Some hosts publish the frame counter just after acknowledging
+            # the stop. Observe that publication without sending another step.
+            published_by = time.monotonic() + 2
+            while (not result.get("timeout")
+                   and result["frame_after"] == result["frame_before"]
+                   and time.monotonic() < published_by):
+                result["frame_after"] = self.command("frame")["frame"]
             # Subsequent steps start stopped and retain the exact-delta check.
             if result.get("timeout") or result["frame_after"] <= result["frame_before"]:
                 raise RuntimeError(f"Guest did not enter bounded stepping: {result}")
@@ -93,11 +104,15 @@ class FrameDriver:
                 count = min(frames, self.max_step_frames)
                 result = self.command(f"step {count}")
                 expected = result["frame_before"] + count
-                deadline = time.monotonic() + 2
-                while (not result.get("timeout") and result["frame_after"] < expected
+                # A server deadline is a pending request, not cancellation.
+                # Its original step continues running. Only query progress;
+                # never resend the mutation or race it with another edit.
+                deadline = time.monotonic() + self.step_timeout
+                while (result["frame_after"] < expected
                        and time.monotonic() < deadline):
+                    time.sleep(0.01)
                     result["frame_after"] = self.command("frame")["frame"]
-                if result.get("timeout") or result["frame_after"] != expected:
+                if result["frame_after"] != expected:
                     raise RuntimeError(f"Guest did not advance: {result}")
                 frames -= count
         finally:

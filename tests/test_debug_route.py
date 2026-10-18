@@ -59,6 +59,8 @@ class Host:
             return dict(ok=True, frame_before=before, frame_after=self.frame, timeout=self.timeout)
         if command.startswith("read_ram "):
             return {"hex": "01"}
+        if command == "frame":
+            return {"frame": self.frame}
         return {"ok": True}
 
     def close(self):
@@ -67,7 +69,7 @@ class Host:
 
 def test_step_verifies_progress_and_always_releases_controller(tmp_path):
     host = Host()
-    driver = FrameDriver(host, tmp_path)
+    driver = FrameDriver(host, tmp_path, step_timeout=0.02)
     try:
         driver.step(125, "right+y")
         assert host.frame == 132
@@ -131,5 +133,41 @@ def test_startup_handoff_accepts_an_inflight_frame_but_later_steps_are_exact(tmp
         assert driver.wait_started() == 9
         driver.step(2)
         assert host.frame == 11
+    finally:
+        driver.close()
+
+
+def test_startup_waits_for_frame_publication_without_repeating_step(tmp_path):
+    class PublishingHost(Host):
+        def query(self, command, *, retry):
+            if command == "frame":
+                return {"frame": self.frame}
+            result = super().query(command, retry=retry)
+            if command.startswith("step "):
+                result["frame_after"] -= 1
+            return result
+    host = PublishingHost()
+    driver = FrameDriver(host, tmp_path)
+    try:
+        assert driver.wait_started() == 8
+        assert host.calls.count("step 1") == 1
+    finally:
+        driver.close()
+
+
+def test_server_timeout_observes_the_original_pending_step(tmp_path):
+    class PendingHost(Host):
+        def query(self, command, *, retry):
+            if command == "frame":
+                self.frame += 1
+                return {"frame": self.frame}
+            return super().query(command, retry=retry)
+    host = PendingHost(timeout=True)
+    driver = FrameDriver(host, tmp_path)
+    try:
+        driver.step(3)
+        assert host.frame == 10
+        assert host.calls.count("step 3") == 1
+        assert host.calls[-1] == "clear_controller"
     finally:
         driver.close()

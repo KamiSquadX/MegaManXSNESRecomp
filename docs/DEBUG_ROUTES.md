@@ -42,6 +42,16 @@ matching guest state, presented pixels, video resources and relevant audio.
 Stepped captures establish observations; they do not prove native equivalence.
 For expensive software renderers pass `max_step_frames=5` (default 60), so a
 healthy slow renderer stays within the server's bounded step deadline.
+An explicit server timeout leaves that step pending. The driver polls the
+frame counter for its original target, for up to `step_timeout=30` seconds
+(maximum 60), without issuing another step. A lost reply remains an error.
+
+Super FX player and sprite state can live in cartridge RAM. Use
+`read_sram <offset_hex> <length_decimal>` and
+`write_sram <offset_hex> <hex_bytes>` for that memory, rather than a WRAM
+address with the same low bytes. Writes require a stopped frame boundary and
+validate every byte and the complete range before modifying memory. Offsets
+are within the cartridge RAM buffer; these commands do not write the SNES bus.
 
 `DebugClient.query(..., retry=False)` disables reconnect/replay for ambiguous
 requests. All `FrameDriver` commands use it: losing the reply to `step`, reset,
