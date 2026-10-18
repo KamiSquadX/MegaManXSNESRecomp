@@ -1051,8 +1051,42 @@ static void rush_projectile_defeat(unsigned seat,unsigned weapon) {
   check(s.defeated==count+1,"native weapon finishing hit counts exactly one defeat");
 }
 #include "mmx_boss_rush_coop_combat_test.inc"
+/* Developer scan of a recorded session (Tier 2 diagnostics replays):
+ * MMX_REPLAY_SCAN names a text file listing .replay segments. Restore each
+ * segment's opening checkpoint and print the player's hurt state and Rush's
+ * bosses, so a bug can be located in a long playtest. */
+static void rush_replay_scan(const char *list) {
+  FILE *names=fopen(list,"r");check(names!=NULL,"replay list opens");
+  static uint8_t state[2*1024*1024];char name[1400],line[256],sidecar[1500];
+  while(fgets(name,sizeof(name),names)) {
+    name[strcspn(name,"\r\n")]=0;if(!*name) continue;
+    FILE *replay=fopen(name,"r");if(!replay) continue;
+    unsigned offset=0,size=0,digest=0,frame=0;bool found=false;
+    while(fgets(line,sizeof(line),replay))
+      if(sscanf(line,"S %u %u %x",&offset,&size,&digest)==3) {found=true;break;}
+    if(found && fgets(line,sizeof(line),replay)) sscanf(line,"I %u",&frame);
+    fclose(replay);
+    snprintf(sidecar,sizeof(sidecar),"%s.sav",name);
+    FILE *sav=found?fopen(sidecar,"rb"):NULL;
+    bool loaded=sav && size<=sizeof(state) && !fseek(sav,(long)offset,SEEK_SET) &&
+        fread(state,1,size,sav)==size && RtlLoadSnapshotFromMemory(state,size);
+    if(sav) fclose(sav);
+    if(!loaded) {fprintf(stderr,"scan %s: cannot restore\n",name);continue;}
+    MmxBossRushState s=MmxBossRushGetState();
+    fprintf(stderr,"scan frame=%u mode=%u st=%02x hp=%u bd8=%02x c32=%02x c30=%02x 1f0c=%u zero=%u"
+        " boss0=%u/%u obj=%04x hp=%u priv=%u boss1=%u/%u obj=%04x hp=%u priv=%u world=%u/%u actor=%u defeated=%u\n",
+        frame,s.mode,g_ram[0xbaa],g_ram[0xbcf]&127,g_ram[0xbd8],g_ram[0xc32],g_ram[0xc30],g_ram[0x1f0c],
+        MmxZeroActive(),s.bosses[0].id,s.bosses[0].phase,s.bosses[0].object,
+        s.bosses[0].object?g_ram[s.bosses[0].object+0x27]&127:0,s.bosses[0].globals[0],
+        s.bosses[1].id,s.bosses[1].phase,s.bosses[1].object,
+        s.bosses[1].object?g_ram[s.bosses[1].object+0x27]&127:0,s.bosses[1].globals[0],
+        s.globals[31],s.globals[39],s.actor,s.defeated);
+  }
+  fclose(names);
+}
 static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual,size_t cap) {
   rush_rhino_launcher();
+  if(getenv("MMX_REPLAY_SCAN")) {rush_replay_scan(getenv("MMX_REPLAY_SCAN"));return;}
   const char *coop_assets=getenv("MMX_BOSS_RUSH_COOP");
   const char *zero_assets=getenv("MMX_BOSS_RUSH_ZERO");
   if(zero_assets) {

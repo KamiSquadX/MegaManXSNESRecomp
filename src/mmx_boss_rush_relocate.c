@@ -32,6 +32,7 @@ typedef struct MmxRelocBoss {
   uint32_t palette_rotate,palette_fade; /* relocated helpers Rush runs privately */
   const uint32_t *midline;size_t midline_count; /* room-half tests (LDA $05) */
   const MmxBossRushSpawnGuard *spawns;size_t spawn_count;
+  const MmxBossRushChildGuard *child_guards;size_t child_guard_count;
 } MmxRelocBoss;
 #define COUNT(a) (sizeof(a)/sizeof(*(a)))
 /* X1 shot classes: Homing Torpedo $0E, Shotgun Ice $07; charged +9. */
@@ -55,6 +56,12 @@ static const uint32_t k_rhino_midline[]={0x3fe8c1,0x3fe8c7,0x3feb30,0x3feb50};
  * loop, which stops with $3A drills unspawned ($EA85). The pin carrier
  * ($EBE7) is not counted. */
 static const MmxBossRushSpawnGuard k_rhino_spawns[]={{0x3fec08,0x3d,0},{0x3fea85,0x3d,0x3a}};
+/* His pin carrier (drill class $26, variant $3C = 2) catches the player in
+ * X3's state $12. The pin ($3F:EB78) locks a caught player: require the
+ * carrier, or any hit during his recoil would lock the player. The drill
+ * charge spawns a carrier on every frame it overlaps the player ($E994);
+ * X3's caught player stops overlapping, X1's does not, so spawn one. */
+static const MmxBossRushChildGuard k_rhino_child_guards[]={{0x3feb78,0x26,0x3c,2},{0x3fe994,0x26,0x3c,2}};
 static const MmxRelocBoss kBosses[]={
   {"TUNNEL RHINO",3,k_rhino_roster_id,k_rhino_body,2,4,
    k_rhino_banks,COUNT(k_rhino_banks),k_rhino_copies,COUNT(k_rhino_copies),
@@ -64,7 +71,7 @@ static const MmxRelocBoss kBosses[]={
    k_rhino_weaknesses,COUNT(k_rhino_weaknesses),
    /* X3 $13:F7D6 rotates OBJ colors 1-15; $13:F7FC fades them back. */
    0x33f7d6,0x33f7fc,k_rhino_midline,COUNT(k_rhino_midline),
-   k_rhino_spawns,COUNT(k_rhino_spawns)},
+   k_rhino_spawns,COUNT(k_rhino_spawns),k_rhino_child_guards,COUNT(k_rhino_child_guards)},
 };
 /* Zero/sink area for X3-only globals: reads see zero, writes hit ROM. */
 enum { ZERO_AREA=0x86fd40, ZERO_SIZE=0x200 };
@@ -130,6 +137,7 @@ static bool build(const MmxRelocBoss *boss,const uint8_t *rom,size_t size,char *
   MmxBossRushForeignSetPaletteHooks(boss->palette_rotate,boss->palette_fade);
   MmxBossRushForeignSetMidlineReads(boss->midline,(unsigned)boss->midline_count);
   MmxBossRushForeignSetSpawnGuards(boss->spawns,(unsigned)boss->spawn_count);
+  MmxBossRushForeignSetChildGuards(boss->child_guards,(unsigned)boss->child_guard_count);
   MmxBossRushAudioPrepareForeign(boss->roster_id,rom,size,boss->sound_bank,boss->effects,(unsigned)boss->effect_count);
   return true;
 }
@@ -137,6 +145,7 @@ bool MmxBossRushForeignBuild(char *error,size_t cap) {
   for(size_t i=0;i<COUNT(kBosses);++i) MmxBossRushForeignSetController(kBosses[i].roster_id,0);
   MmxBossRushForeignSetSoundShims(0,0);MmxBossRushForeignSetPaletteHooks(0,0);
   MmxBossRushForeignSetMidlineReads(NULL,0);MmxBossRushForeignSetSpawnGuards(NULL,0);
+  MmxBossRushForeignSetChildGuards(NULL,0);
   MmxCartExtensionClear();
   if(!MmxCartPatchAvailable()) {
     snprintf(error,cap,"The loaded Mega Man X image cannot host relocated bosses.");return false;

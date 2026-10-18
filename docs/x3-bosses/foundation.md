@@ -158,6 +158,27 @@ unspawned drills back out of `$3D`: after a failed allocation in the volley
 (`$3F:EC08`) and at the spread's count store (`$EA85`, minus the `$3A`
 drills its loop could not spawn).
 
+**Pin and caught state.** X3 has a caught player state (`$12`) that X1 lacks;
+it maps to X1's ordinary hurt `$0E`. Child guards tie his catch code to his
+pin carrier (drill variant 2): the pin test (`$3F:EB78`) counts the player as
+caught only while his carrier is alive, so an ordinary hit during his recoil
+no longer locks the player; and the drill charge spawns a carrier
+(`JSR $EBE1` at `$E994`) only when none is alive. X3's caught player stops
+overlapping him; X1's does not, so he spawned one carrier per frame of
+contact, filling the projectile pool (the leftover drill graphics).
+
+**Hurt latches after a lock.** A lock taken while the player is hurt skips
+the end of X1's hurt state, which starts the 60-frame countdown (`$0C13`)
+that clears the hurt latches `$0BD8`/`$0C32`. The release shim starts that
+countdown when it frees a latched player; otherwise the player could never be
+hurt again (found by replaying the playtest capture with `MMX_REPLAY_WATCH`).
+
+**Spread drill offsets.** The spread drills read their start offsets from
+`$86:EFE7` + 4 × index (index 0-3, up to `$EFF6`); the copied table used to
+end at `$EFEC`, so the shoulder drills and the left-facing hand drill read
+the angle table instead and started in the wrong places (or off screen,
+deleting themselves). The copy now covers `$86:EFB8`-`$EFF6`.
+
 **Classification** (anything else fails generation):
 
 - *X1 helpers:* cull `$82:80B4`, terrain `$84:91BE`, RNG `$84:9086`, shot

@@ -273,6 +273,11 @@ so nothing can hurt X until the stage ends; X1's contact test then skips the
 player. Rush does not swap those latches per boss, so a boss killed during its
 own update now leaves them as it found them. Before this, the player became
 permanently invulnerable after the first native boss death of a run.
+`MMX_REPLAY_SCAN=<list file>` (one `.replay` segment path per line) restores
+each listed segment's opening checkpoint in the state-test binary and prints the
+player's state, HP and hurt latches beside both Rush bosses, which locates a
+fault in a long playtest capture before replaying the suspect segment with
+`MMX_REPLAY_WATCH` (see the README).
 Set `MMX_BOSS_RUSH_DEATH_TEST=1` for a fatal native-contact regression;
 `MMX_BOSS_RUSH_DEATH_BOSS=4` selects Kuwanger instead of Penguin. It requires
 the actual death animation to reach Game Over and emit exactly one `$0A`

@@ -109,8 +109,9 @@ class Boss:
 
 RHINO = Boss('rhino', 23, 0x3fe5e4, {0x26: 0x08ab9b}, 0x55,
              # $86 tables read through the data bank: hitboxes, drill spawn
-             # tables and the shared angle table (indices $00-$70).
-             [(0x86ec87, 10), (0x86efb8, 0x35), (0x86e18e, 0x74)],
+             # tables (through the spread offsets at $EFE7 + 4*index, index
+             # 0-3, ending at $EFF6) and the shared angle table ($00-$70).
+             [(0x86ec87, 10), (0x86efb8, 0x3f), (0x86e18e, 0x74)],
              # Normal: Kuwanger's row (its Homing Torpedo column carries the
              # weakness; Rush neutralizes Torpedo itself for Rhino). Drill
              # charge deflects ($0D -> row 0); the flinch is invulnerable.
@@ -140,10 +141,17 @@ def shim_code(kind, init):
         return [0x08, 0xe2, 0x20, 0xad, 0xcf, 0x0b, 0x29, 0x7f, 0xf0, 0x04,
                 0x22, 0xeb, 0x9f, 0x84, 0x28, 0x6b]
     if kind == 'release':
-        # X3 $04:D1EF releases only a player still locked in $1E.
-        # PHP; SEP #$20; LDA $0BAA; CMP #$1E; BNE +4; JSL $84:A003; PLP; RTL
-        return [0x08, 0xe2, 0x20, 0xad, 0xaa, 0x0b, 0xc9, 0x1e, 0xd0, 0x04,
-                0x22, 0x03, 0xa0, 0x84, 0x28, 0x6b]
+        # X3 $04:D1EF releases only a player still locked in $1E. A lock
+        # taken while the player was hurt skipped the end of X1's hurt state,
+        # which starts the 60-frame countdown ($0C13) that clears the hurt
+        # latches $0BD8/$0C32; start it here, or the player stays
+        # invulnerable. PHP; SEP #$20; LDA $0BAA; CMP #$1E; BNE done;
+        # JSL $84:A003; LDA $0BD8; BEQ done; LDA $0C13; BNE done;
+        # LDA #$3C; STA $0C13; done: PLP; RTL
+        return [0x08, 0xe2, 0x20, 0xad, 0xaa, 0x0b, 0xc9, 0x1e, 0xd0, 0x13,
+                0x22, 0x03, 0xa0, 0x84, 0xad, 0xd8, 0x0b, 0xf0, 0x0a,
+                0xad, 0x13, 0x0c, 0xd0, 0x05, 0xa9, 0x3c, 0x8d, 0x13, 0x0c,
+                0x28, 0x6b]
     if kind == 'delete':
         # X3 $02:D928 (= X1 $82:8398): clear $00-$03 and $0E as words. X1's
         # slot allocators test the first word, so a lone 8-bit STZ $00

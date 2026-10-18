@@ -133,6 +133,16 @@ unsigned MmxBossRushForeignSpawnGuards(const MmxBossRushSpawnGuard **guards) {
   if(guards) *guards=spawn_guards;
   return spawn_guard_count;
 }
+static MmxBossRushChildGuard child_guards[4];static unsigned child_guard_count;
+void MmxBossRushForeignSetChildGuards(const MmxBossRushChildGuard *guards,unsigned count) {
+  if(count>sizeof(child_guards)/sizeof(*child_guards)) count=0;
+  if(count) memcpy(child_guards,guards,count*sizeof(*guards));
+  child_guard_count=count;
+}
+unsigned MmxBossRushForeignChildGuards(const MmxBossRushChildGuard **guards) {
+  if(guards) *guards=child_guards;
+  return child_guard_count;
+}
 static uint32_t sound_shims[2];
 void MmxBossRushForeignSetSoundShims(uint32_t plain,uint32_t positional) {
   sound_shims[0]=plain;sound_shims[1]=positional;

@@ -428,6 +428,28 @@ static void foreign_spawn_hook(CpuState *cpu,uint32_t pc) {
     return;
   }
 }
+/* A relocated caught test (`LDA player-state`) answers "not caught" and
+ * skips the read without the catching child; a relocated spawn (`JSR`) is
+ * skipped while that child is alive. */
+static void foreign_child_hook(CpuState *cpu,uint32_t pc) {
+  uint8_t opcode=0;
+  if(!playing() || !MmxCartExtensionRead(pc,&opcode,1) || (opcode!=0xad && opcode!=0x20)) return;
+  int owner=MmxBossRushOwner(cpu->D);if(owner<0) return;
+  MmxBossRushState s=MmxBossRushGetState();MmxBossRushBoss b=s.bosses[owner];
+  if(!b.phase || b.object!=cpu->D || MmxBossRushNative(b.id)) return;
+  const MmxBossRushChildGuard *guards;unsigned count=MmxBossRushForeignChildGuards(&guards);
+  for(unsigned i=0;i<count;++i) if((guards[i].pc&0x7fffff)==(pc&0x7fffff)) {
+    bool alive=false;
+    for(unsigned d=0x1428;d<0x1628;d+=64)
+      if(g_ram[d] && g_ram[d+10]==guards[i].kind && g_ram[d+guards[i].field]==guards[i].value &&
+          MmxBossRushOwner(d)==owner) alive=true;
+    if(opcode==0xad && !alive) {
+      cpu->A&=0xff00;cpu->_flag_Z=1;cpu->_flag_N=0;cpu->P=(cpu->P&~0x80u)|2u;
+    } else if(!(opcode==0x20 && alive)) return;
+    interp_bridge_pre_opcode_redirect((pc&0xff0000)|((pc+3)&0xffff));
+    return;
+  }
+}
 void MmxBossRushHostFrame(void) {
 #if !MMX_VARIANT_JP
   MmxBossRushForeignSync();
@@ -469,6 +491,8 @@ void MmxBossRushHostFrame(void) {
   for(unsigned i=0;i<midlines;++i) registered&=interp_bridge_add_pre_opcode_hook(midline[i],foreign_midline_hook);
   const MmxBossRushSpawnGuard *spawns;unsigned spawn_count=MmxBossRushForeignSpawnGuards(&spawns);
   for(unsigned i=0;i<spawn_count;++i) registered&=interp_bridge_add_pre_opcode_hook(spawns[i].pc,foreign_spawn_hook);
+  const MmxBossRushChildGuard *children;unsigned child_count=MmxBossRushForeignChildGuards(&children);
+  for(unsigned i=0;i<child_count;++i) registered&=interp_bridge_add_pre_opcode_hook(children[i].pc,foreign_child_hook);
   uint32_t plain,positional;MmxBossRushForeignSoundShims(&plain,&positional);
   if(plain) registered&=interp_bridge_add_pre_opcode_hook(plain,foreign_sound_hook);
   if(positional) registered&=interp_bridge_add_pre_opcode_hook(positional,foreign_sound_hook);

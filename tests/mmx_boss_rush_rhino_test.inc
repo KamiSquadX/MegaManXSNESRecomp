@@ -124,6 +124,42 @@ static void rush_rhino_weakness_checks(uint8_t *snapshot,size_t size,unsigned ob
   check(acid.profile==5,"Rhino's weakness flinch is invulnerable");
   check(!deflect.damage && !slash_deflect.damage,"his drill-charge row deflects every attack");
 }
+/* His stop-and-fire charge, started from the left wall with free projectile
+ * slots: he stops past the arena's center, turns to the player and launches
+ * the hand drill (40 ahead, 8 up) and both shoulder drills (24 up, at +14
+ * and -18; X3 does not mirror them), each after a 4-pixel spawn nudge. */
+static void rush_rhino_spread_checks(uint8_t *snapshot,size_t size,unsigned object) {
+  check(RtlLoadSnapshotFromMemory(snapshot,size),"Rhino spread case restores combat");
+  MmxBossRushState s=MmxBossRushGetState();unsigned penguin=s.bosses[0].object;
+  for(unsigned d=0x1428;d<0x1628;d+=64) memset(g_ram+d,0,64);
+  unsigned x=s.camera_x+60;
+  g_ram[object+5]=(uint8_t)x;g_ram[object+6]=(uint8_t)(x>>8);
+  g_ram[object+2]=0;g_ram[object+3]=4;g_ram[object+0x3b]=1;g_ram[object+0x35]=0;g_ram[object+0x3d]=0;
+  g_ram[object+0x11]|=0x40;g_ram[object+0x1a]=0;g_ram[object+0x1b]=4;g_ram[object+0x28]=0x0a;
+  int found[4][2]={{0}};unsigned seen=0,age[8]={0};
+  for(unsigned t=0;t<300 && seen!=0x0e;++t) {
+    g_ram[penguin+5]=(uint8_t)(s.camera_x-128);g_ram[penguin+6]=(uint8_t)((s.camera_x-128)>>8);
+    frame(0);rush_keep_players_alive();
+    for(unsigned i=0;i<8;++i) {
+      unsigned d=0x1428+i*64;
+      bool spread=g_ram[d] && g_ram[d+10]==0x26 && g_ram[d+0x3c]==4 && MmxBossRushOwner(d)==1;
+      if(spread && age[i]==1 && g_ram[d+3] && g_ram[d+0x0b]<4) {
+        unsigned k=g_ram[d+0x0b];seen|=1u<<k;
+        found[k][0]=(int)eagle_word(g_ram+d+5)-(int)eagle_word(g_ram+object+5);
+        found[k][1]=(int)eagle_word(g_ram+d+8)-(int)eagle_word(g_ram+object+8);
+      }
+      age[i]=!spread?0:age[i]==1 && g_ram[d+3]?2:age[i]?age[i]:1;
+    }
+  }
+  fprintf(stderr,"rhino spread: drills=%x hand=%d,%d shoulders=%d,%d / %d,%d\n",seen,
+      found[1][0],found[1][1],found[2][0],found[2][1],found[3][0],found[3][1]);
+  check(seen==0x0e,"his stop-and-fire spread launches three drills");
+  /* He turns to the player before firing; the nudge follows his facing. */
+  int dir=found[1][0]<0?-1:1;
+  check(found[1][0]==44*dir && found[1][1]==-8,"the hand drill starts at his hand");
+  check(found[2][0]==14+4*dir && found[2][1]==-24 && found[3][0]==-18+4*dir && found[3][1]==-24,
+      "both shoulder drills start on his shoulders");
+}
 /* A long fight: every hit flashes him with the invulnerable profile and the
  * flash restores his own profile (X3 $1F57), so hits keep landing; dead drills
  * give their projectile slots back, so he keeps firing volleys; and every
@@ -132,7 +168,8 @@ static void rush_rhino_long_fight_checks(uint8_t *snapshot,size_t size,unsigned 
   check(RtlLoadSnapshotFromMemory(snapshot,size),"Rhino long fight restores combat");
   MmxBossRushState s=MmxBossRushGetState();
   int width=256+(g_ram[0x1f7a]==4?MMX_RUSH_MAMMOTH_SCROLL:0),min_x=1<<30,max_x=-(1<<30);
-  unsigned hits=0,hp=g_ram[object+0x27]&127,spreads=0,volleys=0,last=0,stale=0,deflecting=0,charging=0,phantom=0;
+  unsigned hits=0,hp=g_ram[object+0x27]&127,spreads=0,volleys=0,last=0,stale=0,deflecting=0,charging=0,phantom=0,shoulders=0,hands=0;
+  unsigned spread_age[8]={0},locked_frames=0,hurt_frames=0;
   bool drills_alive=false;
   for(unsigned t=0;t<6000;++t) {
     s=MmxBossRushGetState();
@@ -146,9 +183,27 @@ static void rush_rhino_long_fight_checks(uint8_t *snapshot,size_t size,unsigned 
     if(h<4) {g_ram[object+0x27]=(uint8_t)((g_ram[object+0x27]&128)|30);h=30;}
     hp=h;
     if(behavior==0x0206 && last!=0x0206) ++spreads;
+    /* Spread drills start at X3's offsets ($86:EFE7): the hand drill 40
+     * pixels ahead and 8 up, the shoulder drills 24 up at +14 / -18. */
+    for(unsigned i=0;i<8;++i) {
+      unsigned d=0x1428+i*64;
+      bool spread=g_ram[d] && g_ram[d+10]==0x26 && g_ram[d+0x3c]==4 && MmxBossRushOwner(d)==1;
+      /* Sample once its spread step has applied the offset ($03 leaves 0). */
+      if(spread && spread_age[i]==1 && g_ram[d+3]) {
+        int dx=(int)eagle_word(g_ram+d+5)-(int)eagle_word(g_ram+object+5);
+        int dy=(int)eagle_word(g_ram+d+8)-(int)eagle_word(g_ram+object+8);
+        fprintf(stderr,"rhino spread drill t=%u index=%u dx=%d dy=%d facing=%s\n",t,g_ram[d+0x0b],dx,dy,
+            g_ram[object+0x11]&0x40?"right":"left");
+        if(dy<=-20 && dy>=-28) ++shoulders;
+        if(dy<=-4 && dy>=-12) ++hands;
+      }
+      spread_age[i]=!spread?0:spread_age[i]==1 && g_ram[d+3]?2:spread_age[i]?spread_age[i]:1;
+    }
     /* The deflect row belongs to his drill charge (2) and its wind-down (10). */
     if(!g_ram[object+0x28] && behavior!=0x0202 && behavior!=0x020a) ++deflecting;
     if(behavior==0x0202) ++charging;
+    if(g_ram[0xbaa]==0x1e) ++locked_frames;
+    if(g_ram[0xbaa]==0x0e) ++hurt_frames;
     last=behavior;
     bool alive=false;unsigned live=0;
     for(unsigned d=0x1428;d<0x1628;d+=64) {
@@ -164,11 +219,13 @@ static void rush_rhino_long_fight_checks(uint8_t *snapshot,size_t size,unsigned 
     if(x<min_x) min_x=x;
     if(x>max_x) max_x=x;
   }
-  fprintf(stderr,"rhino long fight: hits=%u volleys=%u spreads=%u stale=%u deflecting=%u phantom=%u drill-charge=%u x=%d..%d width=%d\n",
-      hits,volleys,spreads,stale,deflecting,phantom,charging,min_x,max_x,width);
-  check(hits>=5 && !deflecting,"Rhino keeps taking damage after his hit flashes end");
+  fprintf(stderr,"rhino long fight: hits=%u volleys=%u spreads=%u stale=%u deflecting=%u phantom=%u drill-charge=%u locked=%u hurt=%u x=%d..%d width=%d\n",
+      hits,volleys,spreads,stale,deflecting,phantom,charging,locked_frames,hurt_frames,min_x,max_x,width);
+  check(hits && !deflecting,"Rhino keeps taking damage after his hit flashes end");
   check(!stale,"deleted drills leave their projectile slots free");
   check(!phantom && volleys>=2,"Rhino keeps firing drills for the whole fight");
+  /* A spread fires only into free projectile slots; count the ones that did. */
+  check(shoulders==2*hands,"every stop-and-fire spread launches his hand drill and both shoulder drills from their X3 positions");
   check(min_x>=24 && max_x<=width-24,"Rhino stays inside the arena on every charge");
   uint8_t tail=0;
   check(!MmxCartExtensionWrite(0x86ff40,&tail,1),"relocation never writes the saber/weapon tables at $86:FF40");
@@ -249,15 +306,20 @@ static void rush_rhino_pin_palette_checks(uint8_t *snapshot,size_t size,unsigned
   g_ram[0xbb0]=(uint8_t)floor_y;g_ram[0xbb1]=(uint8_t)(floor_y>>8);
   g_ram[0xbaa]=g_ram[0xbab]=0;
   /* Ordinary health (no keep-alive refill) so the drill hit really hurts X. */
+  /* Start unhurt: the fixture snapshot may be mid-hurt, and forcing the
+   * state skips the end of X1's hurt (its latch countdown). */
   g_ram[0xbcf]=0x1c;g_ram[0xc30]=g_ram[0xc31]=g_ram[0xc32]=g_ram[0xc33]=0;
-  bool carrier=false,locked=false,rotated=false,dragged=false;unsigned lock_frame=0,release_frame=0;
+  g_ram[0xbd8]=g_ram[0xc13]=0;
+  bool carrier=false,locked=false,rotated=false,dragged=false;unsigned lock_frame=0,release_frame=0,carriers_max=0;
   unsigned start_x=px;
   for(unsigned t=0;t<420;++t) {
     g_ram[penguin+5]=(uint8_t)(s.camera_x-128);g_ram[penguin+6]=(uint8_t)((s.camera_x-128)>>8);
     frame(0);
     if((g_ram[0xbcf]&127)<8) g_ram[0xbcf]=(uint8_t)((g_ram[0xbcf]&0x80)|0x1c);
+    unsigned carriers=0;
     for(unsigned d=0x1428;d<0x1628;d+=64)
-      if(g_ram[d] && g_ram[d+10]==0x26 && g_ram[d+0x3c]==2 && MmxBossRushOwner(d)==(int)seat) carrier=true;
+      if(g_ram[d] && g_ram[d+10]==0x26 && g_ram[d+0x3c]==2 && MmxBossRushOwner(d)==(int)seat) {carrier=true;++carriers;}
+    if(carriers>carriers_max) carriers_max=carriers;
     unsigned x=g_ram[0xbad]|g_ram[0xbae]<<8;
     if(carrier && (x>start_x+12 || x+12<start_x)) dragged=true;
     if(g_ram[0xbaa]==0x1e && !locked) {locked=true;lock_frame=t;}
@@ -274,25 +336,31 @@ static void rush_rhino_pin_palette_checks(uint8_t *snapshot,size_t size,unsigned
   fprintf(stderr,"rhino pin: carrier=%u dragged=%u locked=%u@%u released@%u rotated=%u restored=%u\n",
       carrier,dragged,locked,lock_frame,release_frame,rotated,restored);
   check(carrier && dragged,"Rhino's drill charge catches X and carries him");
+  check(carriers_max==1,"one drill-charge catch spawns one pin carrier");
   check(rotated,"his drill charge cycles his private palette");
   check(restored,"his palette fades back to his original colors");
-  /* The pin itself: during his drill recoil (behavior 2, step 6) a player
-   * left hurt by the drill ($0E, X3's caught $12) is locked in X1's
-   * scripted state $1E, then released once on the ground. */
+  /* However the catch ended, X1's post-hit countdown clears the hurt
+   * latches; a player locked while hurt must not stay invulnerable. */
+  unsigned cleared=0;
+  for(unsigned t=0;t<240 && !cleared;++t) {
+    g_ram[penguin+5]=(uint8_t)(s.camera_x-128);g_ram[penguin+6]=(uint8_t)((s.camera_x-128)>>8);
+    frame(0);rush_keep_players_alive();
+    if(g_ram[0xbaa]!=0x0e && g_ram[0xbaa]!=0x1e && !g_ram[0xbd8] && !g_ram[0xc32]) cleared=t+1;
+  }
+  fprintf(stderr,"rhino pin latches cleared after %u frames (bd8=%02x c32=%02x)\n",cleared,g_ram[0xbd8],g_ram[0xc32]);
+  check(cleared,"the caught player's hurt latches clear after the pin");
+  /* Without his pin carrier there is no catch: an ordinary hit during his
+   * drill recoil (behavior 2, step 6) must not lock the player. */
   check(RtlLoadSnapshotFromMemory(snapshot,size),"Rhino pin case restores combat");
   g_ram[object+2]=2;g_ram[object+3]=6;g_ram[object+0x39]=60;g_ram[object+0x36]=0;
   g_ram[0xbaa]=0x0e;g_ram[0xbab]=0;
-  locked=false;lock_frame=release_frame=0;
-  for(unsigned t=0;t<240 && !release_frame;++t) {
+  locked=false;
+  for(unsigned t=0;t<120;++t) {
     g_ram[penguin+5]=(uint8_t)(s.camera_x-128);g_ram[penguin+6]=(uint8_t)((s.camera_x-128)>>8);
     frame(0);rush_keep_players_alive();
-    if(g_ram[0xbaa]==0x1e && !locked) {locked=true;lock_frame=t;}
-    if(locked && g_ram[0xbaa]!=0x1e) release_frame=t;
+    if(g_ram[0xbaa]==0x1e) locked=true;
   }
-  fprintf(stderr,"rhino pin lock=%u@%u release@%u rhino=%02x/%02x/%02x\n",locked,lock_frame,release_frame,
-      g_ram[object+1],g_ram[object+2],g_ram[object+3]);
-  check(locked && lock_frame<3,"a hurt player is pinned by his drill recoil");
-  check(release_frame>lock_frame,"the pinned player is released after landing");
+  check(!locked && !g_ram[object+0x36],"an ordinary hit during his recoil is not a pin");
 }
 /* Tunnel Rhino's original X3 code, relocated from the user's ROM, fights in
  * seat 1 beside a native Penguin. MMX_BOSS_RUSH_X3_ROM names the X3 ROM. */
@@ -420,6 +488,7 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
   for(unsigned t=0;t<60;++t) {frame(0);rush_keep_players_alive();}
   check(!memcmp(first,g_ram,sizeof(first)),"Rhino replay is deterministic");
   rush_rhino_pin_palette_checks(start,n,object);
+  rush_rhino_spread_checks(start,n,object);
   rush_rhino_long_fight_checks(start,n,object);
   rush_rhino_weakness_checks(start,n,object,x3);
   check(RtlLoadSnapshotFromMemory(start,n),"Rhino seat snapshot restores for defeat");

@@ -59,6 +59,19 @@ typedef struct MmxBossRushSpawnGuard {
 } MmxBossRushSpawnGuard;
 void MmxBossRushForeignSetSpawnGuards(const MmxBossRushSpawnGuard *guards,unsigned count);
 unsigned MmxBossRushForeignSpawnGuards(const MmxBossRushSpawnGuard **guards);
+/* X3 has a "caught" player state that X1 lacks: relocated bodies see X1's
+ * ordinary hurt state in its place, and the caught player stays tangible.
+ * A child guard ties such code to the child that does the catching (a live
+ * child of `kind` owned by the body, whose field `field` holds `value`):
+ * on a relocated `LDA player-state` caught test it reports "not caught"
+ * (A=0) without that child; on a relocated `JSR spawn` it skips the call
+ * while that child is already alive, so one catch spawns one child. */
+typedef struct MmxBossRushChildGuard {
+  uint32_t pc;
+  uint8_t kind, field, value;
+} MmxBossRushChildGuard;
+void MmxBossRushForeignSetChildGuards(const MmxBossRushChildGuard *guards,unsigned count);
+unsigned MmxBossRushForeignChildGuards(const MmxBossRushChildGuard **guards);
 /* Rebuild every relocated body for the loaded source ROMs into the cart's
  * patch windows (mmx_boss_rush_relocate.c). Restores the cart first. */
 bool MmxBossRushForeignBuild(char *error,size_t error_size);
