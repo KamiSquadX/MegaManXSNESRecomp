@@ -424,6 +424,10 @@ const MmxSpriteAsset *MmxRenderAssetsSprite(unsigned stage, unsigned section, un
   unsigned id = sprite < 256 ? sprite_resource[sprite] : 255;
   return id < 254 && ready[id] == 1 ? &assets[id] : NULL;
 }
+const MmxSpriteAsset *MmxRenderAssetsResource(unsigned stage, unsigned section, unsigned resource) {
+  stage_assets(stage, section);
+  return resource < 256 && ready[resource] == 1 ? &assets[resource] : NULL;
+}
 const MmxSpriteAsset *MmxRenderAssetsRushSprite(unsigned stage,unsigned sprite) {
   if(stage>=13 || sprite>=256 || !rom) return NULL;
   if(!rush_ready[stage][sprite]) {

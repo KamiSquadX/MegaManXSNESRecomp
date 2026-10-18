@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(MegaManXSNESRecomp VERSION 2.2.7 LANGUAGES C CXX)
+project(MegaManXSNESRecomp VERSION 2.2.8 LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 11)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 find_package(Git QUIET)
@@ -217,5 +217,28 @@ if(TARGET mmx_state_tests)
     list(REMOVE_ITEM mmx_state_sources "${SNESRECOMP_ROOT}/runner/tests/mmx_state_runtime.c")
     set_property(TARGET mmx_state_tests PROPERTY SOURCES
         tests/mmx_adaptive_state_test.c ${mmx_state_sources})
+    if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/mmx.sfc")
+        foreach(carpet_case native widescreen ultrawide no_shot)
+            set(carpet_env)
+            if(carpet_case STREQUAL "widescreen")
+                list(APPEND carpet_env MMX_MAGIC_CARPET_WIDE=1)
+            elseif(carpet_case STREQUAL "ultrawide")
+                list(APPEND carpet_env MMX_MAGIC_CARPET_WIDE=32:9)
+            elseif(carpet_case STREQUAL "no_shot")
+                list(APPEND carpet_env MMX_MAGIC_CARPET_WIDE=1 MMX_MAGIC_CARPET_NO_SHOT=1)
+            endif()
+            set(carpet_dir "${CMAKE_CURRENT_BINARY_DIR}/magic-carpet-${carpet_case}")
+            file(MAKE_DIRECTORY "${carpet_dir}")
+            add_test(NAME mmx_magic_carpet_${carpet_case}
+                COMMAND ${CMAKE_COMMAND} -E env
+                    --unset=MMX_MAGIC_CARPET_WIDE --unset=MMX_MAGIC_CARPET_NO_SHOT
+                    SDL_AUDIODRIVER=dummy MMX_REPLAY_RECORD=0
+                    "MMX_MAGIC_CARPET_TEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/data/magic_carpet_inputs.csv"
+                    ${carpet_env} $<TARGET_FILE:mmx_state_tests>
+                    "${CMAKE_CURRENT_SOURCE_DIR}/mmx.sfc")
+            set_tests_properties(mmx_magic_carpet_${carpet_case} PROPERTIES
+                WORKING_DIRECTORY "${carpet_dir}" LABELS "rom;magic-carpet")
+        endforeach()
+    endif()
 endif()
 include(cmake/saber.cmake)

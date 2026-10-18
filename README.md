@@ -125,6 +125,9 @@ Setup guides: [Zero](docs/zero-0.0.1.md), [X2/X3 weapons](docs/x-weapons-port.md
 [password saves](docs/password-saves.md), and [netplay](docs/netplay.md).
 No ROMs or extracted assets are included in the downloads.
 
+For Storm Eagle's speedrun trick and local practice saves, see the
+[Magic Carpet guide](docs/magic-carpet.md).
+
 ## Controls and co-op
 
 Use the launcher's **Controls** screen to assign devices and remap buttons for
