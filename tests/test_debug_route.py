@@ -111,3 +111,25 @@ def test_heavy_renderers_can_use_smaller_bounded_steps(tmp_path):
         assert [c for c in host.calls if c.startswith("step")] == ["step 5", "step 5", "step 2"]
     finally:
         driver.close()
+
+
+def test_startup_handoff_accepts_an_inflight_frame_but_later_steps_are_exact(tmp_path):
+    class StartingHost(Host):
+        def query(self, command, *, retry):
+            if command == "frame":
+                return {"frame": self.frame}
+            if command == "step 1" and not self.calls:
+                raise AssertionError("Controller should be cleared before stepping")
+            result = super().query(command, retry=retry)
+            if command == "step 1":
+                self.frame += 1
+                result["frame_after"] += 1
+            return result
+    host = StartingHost()
+    driver = FrameDriver(host, tmp_path)
+    try:
+        assert driver.wait_started() == 9
+        driver.step(2)
+        assert host.frame == 11
+    finally:
+        driver.close()

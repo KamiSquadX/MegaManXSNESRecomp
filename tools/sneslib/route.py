@@ -47,7 +47,16 @@ class FrameDriver:
             time.sleep(0.05)
         # The debug server deliberately rejects the separate pause command.
         # A bounded step owns its own stop and is the supported test API.
-        self.step(1)
+        self.command("set_controller 0")
+        try:
+            result = self.command("step 1")
+            # The first request races an already-running frame. It may observe
+            # that frame plus its requested frame before the stop takes effect.
+            # Subsequent steps start stopped and retain the exact-delta check.
+            if result.get("timeout") or result["frame_after"] <= result["frame_before"]:
+                raise RuntimeError(f"Guest did not enter bounded stepping: {result}")
+        finally:
+            self.command("clear_controller")
         return self.command("frame")["frame"]
 
     def read(self, address, size):
