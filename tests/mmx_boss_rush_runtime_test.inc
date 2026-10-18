@@ -475,6 +475,22 @@ static void rush_death_latch_checks(void) {
   }
   fprintf(stderr,"death latch: contact hits=%u bd8=%u c32=%u\n",hits,g_ram[0xbd8],g_ram[0xc32]);
   check(hits>=2,"the player stays hittable after another boss's native death");
+  /* A hit during a pickup's refill leaves the hurt latches set without the
+   * countdown that clears them (playtest 2026-10-18): Rush starts it. */
+  for(unsigned t=0;t<120 && (g_ram[0xbaa]==0x0e || g_ram[0xc13]);++t) frame(0);
+  g_ram[0xbd8]=g_ram[0xc32]=8;g_ram[0xc13]=0;g_ram[0xbcf]=0x90;hits=0;hp=16;
+  bool cleared=false;
+  for(unsigned t=0;t<300;++t) {
+    s=MmxBossRushGetState();unsigned d=s.bosses[1].object;
+    if(cleared) {eagle_putword(g_ram+d+5,eagle_word(g_ram+0xbad));eagle_putword(g_ram+d+8,eagle_word(g_ram+0xbb0)-8);}
+    frame(0);
+    cleared|=!g_ram[0xbd8] && !g_ram[0xc32];
+    if((g_ram[0xbcf]&127)<hp) ++hits;
+    hp=g_ram[0xbcf]&127;
+    if(hp<4) {g_ram[0xbcf]=0x90;hp=16;}
+  }
+  fprintf(stderr,"death latch: refill latches cleared=%u hits=%u\n",cleared,hits);
+  check(cleared && hits>=1,"hurt latches left by an interrupted hurt reaction clear");
   puts("MMX BOSS RUSH DEATH LATCH CHECKS PASSED");
 }
 static void rush_chameleon_replacement_checks(uint8_t *snapshot,size_t cap) {
@@ -774,6 +790,9 @@ static void rush_hit_visual_checks(uint8_t *arena,uint8_t *pair,size_t cap) {
           d+=step;
         }
         g_ram[0xbad]=(uint8_t)(s.camera_x+100);g_ram[0xbae]=(uint8_t)((s.camera_x+100)>>8);
+        /* Keep the shooter in X1's post-hit protection (latches plus their
+         * countdown), so contact and Mammoth's stomp stun never interrupt it. */
+        g_ram[0xbd8]=g_ram[0xc32]=8;g_ram[0xc13]=0x3c;
         if(cut && t%90==0 && !g_ram[body+(boss==3?0x3c:0x39)]) {
           g_ram[body+2]=g_ram[body+3]=0;
           if(boss==3) g_ram[body+0x3a]=0; /* Select a hittable native behavior. */
@@ -1086,9 +1105,42 @@ static void rush_replay_scan(const char *list) {
   }
   fclose(names);
 }
+/* MMX_REPLAY_PLAY names one .replay segment: restore its checkpoint, feed
+ * its recorded inputs on the current code (no divergence check), then idle
+ * MMX_REPLAY_PLAY_EXTRA frames, printing the player's hurt state whenever it
+ * changes. Shows how a fix changes a captured bug. */
+static void rush_replay_play(const char *name) {
+  static uint8_t state[2*1024*1024];char line[256],sidecar[1500];
+  FILE *replay=fopen(name,"r");check(replay!=NULL,"replay segment opens");
+  unsigned offset=0,size=0,digest=0,frame_number=0,word=0,inputs=0;bool loaded=false;
+  uint8_t last[6]={0};bool first=true;
+  const char *extra_text=getenv("MMX_REPLAY_PLAY_EXTRA");unsigned extra=extra_text?(unsigned)atoi(extra_text):0;
+  for(;;) {
+    bool have=replay && fgets(line,sizeof(line),replay);
+    if(have && !loaded && sscanf(line,"S %u %u %x",&offset,&size,&digest)==3) {
+      snprintf(sidecar,sizeof(sidecar),"%s.sav",name);
+      FILE *sav=fopen(sidecar,"rb");
+      loaded=sav && size<=sizeof(state) && !fseek(sav,(long)offset,SEEK_SET) &&
+          fread(state,1,size,sav)==size && RtlLoadSnapshotFromMemory(state,size);
+      if(sav) fclose(sav);
+      check(loaded,"replay checkpoint restores");continue;
+    }
+    if(have && !(loaded && sscanf(line,"I %u %x",&frame_number,&word)==2)) continue;
+    if(!have) {if(!extra--) break;word=1u<<30;}
+    frame(word&~(1u<<30));++inputs;
+    uint8_t now[6]={g_ram[0xbaa],g_ram[0xbcf]&127,g_ram[0xbd8],g_ram[0xc32],g_ram[0xc13],0};
+    if(first || memcmp(now,last,5)) {
+      fprintf(stderr,"play %u st=%02x hp=%u bd8=%02x c32=%02x c13=%02x\n",inputs,now[0],now[1],now[2],now[3],now[4]);
+      memcpy(last,now,6);first=false;
+    }
+  }
+  if(replay) fclose(replay);
+  fprintf(stderr,"play done after %u frames: bd8=%02x c32=%02x c13=%02x\n",inputs,g_ram[0xbd8],g_ram[0xc32],g_ram[0xc13]);
+}
 static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual,size_t cap) {
   rush_rhino_launcher();
   if(getenv("MMX_REPLAY_SCAN")) {rush_replay_scan(getenv("MMX_REPLAY_SCAN"));return;}
+  if(getenv("MMX_REPLAY_PLAY")) {rush_replay_play(getenv("MMX_REPLAY_PLAY"));return;}
   const char *coop_assets=getenv("MMX_BOSS_RUSH_COOP");
   const char *zero_assets=getenv("MMX_BOSS_RUSH_ZERO");
   if(zero_assets) {

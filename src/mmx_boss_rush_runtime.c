@@ -844,6 +844,13 @@ void MmxBossRushAfterFrame(uint8_t *r) {
   MmxBossRushSetState(&s);
   for(unsigned i=0;i<2;++i) if(s.bosses[i].phase==MMX_RUSH_FIGHTING && !s.bosses[i].health)
     MmxBossRushDefeat(i);
+  /* A hit during a health pickup's refill: the refill takes the player back
+   * before the hurt reaction ($0E) starts the invulnerability countdown
+   * $0C13, which is what clears the hurt latches. X1 freezes enemies while
+   * refilling; Rush's bosses keep fighting, so start the native countdown
+   * here or nothing could hurt the player again. */
+  if(r[0xbd8] && !r[0xc13] && r[0xbaa]!=0x0e && r[0xbaa]!=0x0c && r[0xbaa]!=0x1e && (r[0xbcf]&127))
+    r[0xc13]=0x3c;
   bool alive=(r[0xbcf]&127)!=0;
   bool death_complete=r[0xbaa]==12 && r[0xbab]>=6;
   if(s.coop) {
