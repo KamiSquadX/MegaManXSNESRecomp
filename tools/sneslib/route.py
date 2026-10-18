@@ -13,7 +13,10 @@ import time
 
 
 class FrameDriver:
-    def __init__(self, client, output: Path):
+    def __init__(self, client, output: Path, *, max_step_frames=60):
+        if type(max_step_frames) is not int or not 1 <= max_step_frames <= 60:
+            raise ValueError("Step batch must be between 1 and 60 frames")
+        self.max_step_frames = max_step_frames
         self.client = client
         self.output = Path(output)
         self.output.mkdir(parents=True, exist_ok=True)
@@ -78,7 +81,7 @@ class FrameDriver:
         self.command(f"set_controller {buttons}")
         try:
             while frames:
-                count = min(frames, 60)
+                count = min(frames, self.max_step_frames)
                 result = self.command(f"step {count}")
                 expected = result["frame_before"] + count
                 deadline = time.monotonic() + 2

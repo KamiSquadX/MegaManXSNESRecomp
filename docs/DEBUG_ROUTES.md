@@ -40,6 +40,8 @@ comparison. For instruction-cost qualification use continuous, identical
 startup-script routes, a finite normal exit, and `tools/coverage_replay.py` with
 matching guest state, presented pixels, video resources and relevant audio.
 Stepped captures establish observations; they do not prove native equivalence.
+For expensive software renderers pass `max_step_frames=5` (default 60), so a
+healthy slow renderer stays within the server's bounded step deadline.
 
 `DebugClient.query(..., retry=False)` disables reconnect/replay for ambiguous
 requests. All `FrameDriver` commands use it: losing the reply to `step`, reset,

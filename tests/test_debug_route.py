@@ -99,3 +99,15 @@ def test_condition_is_bounded_and_invalid_edits_never_reach_host(tmp_path):
             driver.read(0, 2)
     finally:
         driver.close()
+
+
+def test_heavy_renderers_can_use_smaller_bounded_steps(tmp_path):
+    host = Host()
+    with pytest.raises(ValueError):
+        FrameDriver(host, tmp_path, max_step_frames=0)
+    driver = FrameDriver(host, tmp_path, max_step_frames=5)
+    try:
+        driver.step(12)
+        assert [c for c in host.calls if c.startswith("step")] == ["step 5", "step 5", "step 2"]
+    finally:
+        driver.close()
