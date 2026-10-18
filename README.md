@@ -287,6 +287,10 @@ The ready-to-use ZIP is written to `dist/`.
 
 ### Regenerate an existing game project (headless SDK)
 
+Projects can declare ROM identity, coverage inputs and game-owned generation
+hooks in [a generation recipe](docs/GENERATION_RECIPES.md). The CLI, developer
+wrapper and launcher's Generate & Rebuild all apply that recipe.
+
 Game repositories that already ship `bank*.cfg` seeds should use the
 `generate` command instead of scaffolding a new tree. This is the stable
 contract for local UIs and launcher automation:

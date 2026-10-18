@@ -2556,17 +2556,19 @@ def _emit_return(op: Return) -> List[str]:
         "        interp_bridge_has_direct_paired_bounce()) {",
         f"      return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x{src24:06x}u); }}",
         "  }",
-        # A computed RTS may push a synthetic target frame below entry and
-        # consume it completely, leaving cpu->S exactly back at _entry_s.
+        # A computed RTS/RTL may push a synthetic target below entry, with
+        # saved locals or another synthetic continuation beneath that target.
         # During a direct interpreter->AOT bounce, that means the real paired
         # caller frame is still owned by the interpreter.  Hand the computed
-        # continuation back to that owner.  Starting a popped-return bridge
-        # here creates a nested interpreter whose watermark is _entry_s; if a
+        # continuation back to that owner with the entire remaining stack.
+        # Starting a popped-return bridge creates a nested interpreter; if a
         # later helper non-locally returns through the preserved caller, the
         # nested bridge exits at the caller epilogue and the outer interpreter
-        # executes that epilogue a second time (LttP sprite dispatch: PHA;RTS
-        # selector followed by Sprite_ReturnIfInactive's PLA;PLA;RTS).
-        "  if (_ret_s != _entry_s && cpu->S == _entry_s &&",
+        # executes that epilogue a second time. A synthesized far call is also
+        # affected: the nested bridge stops at its local RTL continuation and
+        # the bounce then skips that continuation (YI's PHK/PEA/.../RTL helper).
+        "  if (_ret_s != _entry_s &&",
+        "      (uint16)(_entry_s - _ret_s) < 0x8000u &&",
         "      interp_bridge_has_direct_paired_bounce()) {",
         f"    return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x{src24:06x}u);",
         "  }",
