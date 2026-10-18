@@ -211,7 +211,11 @@ X2_ZERO_LONG = set(ZERO_LONG) | {0x7f8245, 0x7f8246, 0x7f8345, 0x7f8346, 0x7f820
 
 def x2_init_fields(rom, x_class):
     # $00:DA22: $01 = 2, profile 3, sprite set from $86:A34D + 2*(class-1).
-    return {0x16: (0x86a34d + (x_class - 1) * 2, 0), 0x28: (None, 3)}
+    # It also copies the class's graphics slot attributes from $7F:8300 into
+    # +$11; Rush has no X2 slot table, so use OBJ priority 2 and palette 4
+    # (as Rhino's own init does). Palette 0 reads as a hit flash and
+    # priority 0 hides the body behind the arena.
+    return {0x16: (0x86a34d + (x_class - 1) * 2, 0), 0x28: (None, 3), 0x11: (None, 0x29)}
 
 
 # Body/children scratch at $7F:CD90-$7F:CD96: Rush swaps a private copy per
@@ -252,7 +256,7 @@ def bank_map(address, banks=BANKS):
     return (address & 0x80ffff) | (banks[canonical] << 16)
 
 
-def shim_code(kind, init):
+def shim_code(kind, init, extra=()):
     if kind in ('rtl', 'sfx', 'sfxpan'):
         return [0x6b]  # sfx shims get their own addresses for the runtime hook
     if kind == 'clc':
@@ -303,7 +307,7 @@ def shim_code(kind, init):
         for f in (0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x18, 0x10):
             code += [0x64, f]
         code += [0xa9, 0x02, 0x85, 0x01]
-        for field in (0x26, 0x27, 0x28, 0x16):
+        for field in (0x26, 0x27, 0x28, 0x16) + tuple(extra):
             init.append((len(code) + 1, field))
             code += [0xa9, 0x00, 0x85, field]
         return code + [0x28, 0x6b]
@@ -346,7 +350,9 @@ def build(rom, boss):
     shim_at, cursor, init_fields = {}, PAD_SHIMS, []
     for kind in sorted(set(SHIMS.values())):
         fields = []
-        code = shim_code(kind, fields)
+        # Fields beyond X3's class row that a game's init also sets.
+        extra = sorted(set(game.init_fields(rom, boss.x3_class)) - {0x16, 0x26, 0x27, 0x28})
+        code = shim_code(kind, fields, extra)
         shim_at[kind] = cursor
         blobs.append((cursor, code))
         if kind == 'init':

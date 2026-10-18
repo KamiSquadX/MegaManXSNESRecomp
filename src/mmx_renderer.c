@@ -2070,21 +2070,24 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
         (s->object == 0xe18 && MmxRenderAssetsRideArmorPalettePending(frame.ram,
             frame.lines[0].palette + 128 + ((s->attr >> 9) & 7) * 16)))) piece_assets[i] = a;
   }
-  /* Relocated X2/X3 bodies and their projectiles: X1's sprite builder reads
+  /* Relocated X2/X3 bodies, their projectiles and effects (e.g. Wire
+   * Sponge's whip and split halves): X1's sprite builder reads
    * their source sprite sets through X1's own layout tables, so draw them
    * whole from the source game's poses, tiles and palette instead. */
   typedef struct ForeignSprite {
     const MmxForeignPose *pose;const uint16_t *colors;
     int x,y;bool flip,flash;unsigned z;
   } ForeignSprite;
-  ForeignSprite foreign[32];unsigned foreign_count=0;
+  ForeignSprite foreign[32];unsigned foreign_count=0;bool foreign_drawn[128]={false};
   if(stage && frame_rush.mode==MMX_RUSH_PLAYING) {
-    for(unsigned d=0xe68;d<0x1628 && foreign_count<32;d+=d<0x1628?64:48) {
+    for(unsigned d=0xe68;d<0x1d08 && foreign_count<32;d+=d<0x1628?64:32) {
       if(d==0x1228) d=0x1428;
+      if(d==0x1628) d=0x1928;
       unsigned owner=frame_rush.owner[(d-0xe68)/32];
       if(!frame.ram[d] || !owner || owner>2) continue;
       unsigned id=frame_rush.bosses[owner-1].id;
       if(MmxBossRushNative(id)) continue;
+      if(d>=0x1928 && !MmxBossRushForeignArtEffectClass(id,frame.ram[d+10])) continue;
       const MmxForeignPose *pose=MmxBossRushForeignPose(id,frame.ram[d+0x16],frame.ram[d+0x17]&0x7f);
       const uint16_t *colors=MmxBossRushForeignColors(id);
       /* Private palette effects (Rhino's drill-charge rotation and fade). */
@@ -2094,6 +2097,7 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
         colors=frame_rush_visual.colors[seat];
       if(!pose || !colors) continue;
       unsigned attributes=frame.ram[d+0x11];
+      foreign_drawn[(d-0xe68)/32]=true;
       foreign[foreign_count++]=(ForeignSprite){pose,colors,
           (int16_t)(word(frame.ram,d+5)-view_camera(frame.ram,0x1e4d)),
           (int16_t)(word(frame.ram,d+8)-view_camera(frame.ram,0x1e50)),
@@ -2198,10 +2202,13 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       if(frame_rush.mode==MMX_RUSH_PLAYING && !frame.expand && s.object>=0xe68 && s.object<0x1d08 &&
           frame_rush.owner[(s.object-0xe68)/32] && !oam_match) continue;
       /* Relocated bodies are drawn above from their own source art. */
+      /* Effects only when drawn there: X1-native effects a relocated boss
+       * spawns (dust, explosions) keep their own art. */
       if(foreign_count && frame_rush.mode==MMX_RUSH_PLAYING && s.object>=0xe68 && s.object<0x1628) {
         unsigned owner=frame_rush.owner[(s.object-0xe68)/32];
         if(owner && owner<=2 && !MmxBossRushNative(frame_rush.bosses[owner-1].id)) continue;
       }
+      if(stage && s.object>=0x1928 && s.object<0x1d08 && foreign_drawn[(s.object-0xe68)/32]) continue;
       /* Match original OAM before reprojection. HUD and native script panels
        * keep screen coordinates; world pieces use the selected peer origin. */
       if(stage) {s.x-=view_dx;s.y-=view_dy;}

@@ -106,6 +106,15 @@ void MmxBossRushForeignArtSetRom(unsigned game,const uint8_t *rom,size_t size) {
   for(unsigned i=0;i<CACHE;++i) free(cache[i].pixels);
   memset(cache,0,sizeof(cache));cache_next=0;
 }
+static uint32_t effect_classes[MMX_RUSH_ROSTER][8];
+void MmxBossRushForeignArtSetEffectClass(unsigned id,uint8_t kind,bool own) {
+  if(id>=MMX_RUSH_ROSTER) {memset(effect_classes,0,sizeof(effect_classes));return;}
+  if(own) effect_classes[id][kind>>5]|=1u<<(kind&31);
+  else effect_classes[id][kind>>5]&=~(1u<<(kind&31));
+}
+bool MmxBossRushForeignArtEffectClass(unsigned id,uint8_t kind) {
+  return id<MMX_RUSH_ROSTER && (effect_classes[id][kind>>5]>>(kind&31)&1);
+}
 const uint16_t *MmxBossRushForeignColors(unsigned id) {
   Art *a=art(id);return a?a->colors:NULL;
 }

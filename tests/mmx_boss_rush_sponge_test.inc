@@ -2,11 +2,11 @@
  * (0 = buster), page 1 the loaded X2 pack's weapon. Every player shot is held
  * on him. `kill` drops him to 1 HP first. Reports damage, whether he
  * flinched (behavior $0C) and which death path he took ($3B: 6 splits). */
-typedef struct SpongeHit {unsigned damage;bool flinched;unsigned death_path;bool halves;} SpongeHit;
+typedef struct SpongeHit {unsigned damage;bool flinched;unsigned death_path;bool halves;unsigned half_pixels;} SpongeHit;
 static SpongeHit rush_sponge_hit(uint8_t *snapshot,size_t size,unsigned object,unsigned page,unsigned weapon,
                                  uint16_t button,bool kill) {
   check(RtlLoadSnapshotFromMemory(snapshot,size),"Wire Sponge hit case restores combat");
-  SpongeHit result={0,false,0,false};
+  SpongeHit result={0,false,0,false,0};unsigned halves_at=0;bool old_debris[31]={false};
   MmxWeaponsState w=MmxWeaponsGetState();
   w.initialized=1;w.page=(uint8_t)page;w.weapon=(uint8_t)(page?weapon:0);
   if(page) w.energy[(page-1)*8+weapon-1]=28;
@@ -37,9 +37,23 @@ static SpongeHit rush_sponge_hit(uint8_t *snapshot,size_t size,unsigned object,u
     if(g_ram[object+1]==2 && g_ram[object+2]==0x0c) result.flinched=true;
     if(g_ram[object+1]==4 && g_ram[object+0x3b]) result.death_path=g_ram[object+0x3b];
     /* His halves are debris class $2B (spawned as variants $52/$53, which
-     * their first update replaces with a left/right flag). */
-    for(unsigned d=0x1928;d<0x1d08;d+=32)
-      if(g_ram[d] && g_ram[d+10]==0x2b && MmxBossRushOwner(d)==1) result.halves=true;
+     * their first update replaces with a left/right flag). His attacks use
+     * class $2B debris too, so count it only once he is dying. */
+    bool dying=g_ram[object+1]==4 || s.bosses[1].phase==MMX_RUSH_DYING;
+    if(!dying) for(unsigned d=0x1928;d<0x1d08;d+=32) old_debris[(d-0x1928)/32]=g_ram[d] && g_ram[d+10]==0x2b;
+    for(unsigned d=0x1928;d<0x1d08 && dying;d+=32)
+      if(g_ram[d] && g_ram[d+10]==0x2b && MmxBossRushOwner(d)==1 && !old_debris[(d-0x1928)/32]) {
+        result.halves=true;
+        if(!halves_at) halves_at=t;
+        /* They draw from his X2 art (effect-list children). */
+        if(t==halves_at+10 && !result.half_pixels) {
+          static uint32_t image[256*224];
+          if(MmxRendererDraw(image,(MmxRenderView){256,0,4.0/3.0},true)) {
+            result.half_pixels=rush_rhino_art_pixels(image,d,13);
+            if(getenv("MMX_SPONGE_HALVES_PPM")) rush_rhino_save_ppm("rush-sponge-halves.ppm",image);
+          }
+        }
+      }
     if(result.damage && !kill && t>120) break;
   }
   return result;
@@ -102,6 +116,17 @@ static void rush_sponge_checks(uint8_t *start,size_t cap,const char *x2) {
       fighting_at,seen_behavior,min_x,max_x,min_y,max_y,max_hp,shots,effects_seen,s.bosses[1].phase);
   check(fighting_at && s.bosses[1].phase==MMX_RUSH_FIGHTING,"Wire Sponge's original intro hands over to combat");
   check(max_hp==32,"Wire Sponge's intro fills his health meter");
+  const MmxForeignPose *art=MmxBossRushForeignPose(13,g_ram[object+0x16],g_ram[object+0x17]&0x7f);
+  fprintf(stderr,"sponge art: colors=%d set=%02x pose=%02x -> %dx%d\n",MmxBossRushForeignColors(13)!=NULL,
+      g_ram[object+0x16],g_ram[object+0x17],art?art->width:0,art?art->height:0);
+  check(MmxBossRushForeignColors(13) && art && art->width>=24 && art->height>=24,
+      "Wire Sponge's poses draw from his X2 art");
+  static uint32_t image[256*224];
+  check(MmxRendererDraw(image,(MmxRenderView){256,0,4.0/3.0},true),"Wire Sponge combat frame renders");
+  unsigned art_pixels=rush_rhino_art_pixels(image,object,13);
+  fprintf(stderr,"sponge art pixels=%u attr=%02x\n",art_pixels,g_ram[object+0x11]);
+  rush_rhino_save_ppm("rush-sponge-combat.ppm",image);
+  check(art_pixels>=400,"Wire Sponge draws with his own X2 art and palette");
   size_t n=RtlSaveSnapshotToMemory(start,cap);check(n,"Wire Sponge seat snapshot saves");
   /* Weaknesses and deaths. Sonic Slicer needs the X2 weapon pack built from
    * the same ROM. */
@@ -131,6 +156,8 @@ static void rush_sponge_checks(uint8_t *start,size_t cap,const char *x2) {
   check(fire.damage>=1 && !fire.flinched,"Fire Wave is not one of Wire Sponge's weaknesses");
   if(!modern) check(buster_kill.death_path==2 && !buster_kill.halves,"an ordinary kill explodes Wire Sponge");
   check(slicer_kill.death_path==6 && slicer_kill.halves,"a Sonic Slicer kill splits Wire Sponge in two");
+  fprintf(stderr,"sponge halves art pixels=%u\n",slicer_kill.half_pixels);
+  check(slicer_kill.half_pixels>=200,"Wire Sponge's halves draw with his X2 art");
   /* Zero's saber splits him too. */
   if(modern || saber) {
     SpongeHit slash=rush_sponge_hit(start,n,object,0,0,SNES_PAD_Y,false);

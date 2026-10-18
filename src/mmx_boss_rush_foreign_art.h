@@ -20,3 +20,7 @@ const uint16_t *MmxBossRushForeignColors(unsigned id);
 /* The foreign pack hands over each validated source ROM (NULL when it
  * unloads); decoded art is dropped whenever a ROM changes. */
 void MmxBossRushForeignArtSetRom(unsigned game,const uint8_t *rom,size_t size);
+/* Effect-list classes that are the boss's own source-game effects (drawn from
+ * its art); other effects it spawns are X1-native. id >= roster clears all. */
+void MmxBossRushForeignArtSetEffectClass(unsigned id,uint8_t kind,bool own);
+bool MmxBossRushForeignArtEffectClass(unsigned id,uint8_t kind);

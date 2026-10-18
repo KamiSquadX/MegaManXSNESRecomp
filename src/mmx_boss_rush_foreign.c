@@ -40,6 +40,7 @@ void MmxBossRushForeignUnload(void) {
     MmxBossRushForeignArtSetRom(i+2,NULL,0);free(roms[i]);roms[i]=NULL;sizes[i]=0;
   }
   memset(bodies,0,sizeof(bodies));implemented=0;memset(weakness_count,0,sizeof(weakness_count));
+  MmxBossRushForeignArtSetEffectClass(MMX_RUSH_ROSTER,0,false);
   dirty=true;publish();
 }
 bool MmxBossRushForeignReady(unsigned game) {
@@ -54,7 +55,11 @@ uint32_t MmxBossRushForeignImplemented(void) {return implemented;}
 bool MmxBossRushForeignSetController(unsigned id,uint32_t controller) {
   if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || controller>0xffffff) return false;
   if(controller) {bodies[id].controller=controller;implemented|=1u<<id;}
-  else {memset(&bodies[id],0,sizeof(bodies[id]));implemented&=~(1u<<id);}
+  else {
+    for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
+      if(bodies[id].effects[i]) MmxBossRushForeignArtSetEffectClass(id,bodies[id].effect_kinds[i],false);
+    memset(&bodies[id],0,sizeof(bodies[id]));implemented&=~(1u<<id);
+  }
   publish();return true;
 }
 uint32_t MmxBossRushForeignController(unsigned id) {
@@ -83,9 +88,14 @@ bool MmxBossRushForeignSetEffectChild(unsigned id,uint8_t kind,uint32_t controll
   if(MmxBossRushNative(id) || id>=MMX_RUSH_ROSTER || !bodies[id].controller || controller>0xffffff) return false;
   ForeignBody *b=&bodies[id];
   for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
-    if(b->effects[i] && b->effect_kinds[i]==kind) {b->effects[i]=controller;return true;}
+    if(b->effects[i] && b->effect_kinds[i]==kind) {
+      b->effects[i]=controller;MmxBossRushForeignArtSetEffectClass(id,kind,controller!=0);return true;
+    }
   for(unsigned i=0;i<MMX_RUSH_FOREIGN_CHILDREN;++i)
-    if(!b->effects[i]) {b->effects[i]=controller;b->effect_kinds[i]=kind;return controller!=0;}
+    if(!b->effects[i]) {
+      b->effects[i]=controller;b->effect_kinds[i]=kind;
+      MmxBossRushForeignArtSetEffectClass(id,kind,controller!=0);return controller!=0;
+    }
   return false;
 }
 uint32_t MmxBossRushForeignEffectChild(unsigned id,uint8_t kind) {

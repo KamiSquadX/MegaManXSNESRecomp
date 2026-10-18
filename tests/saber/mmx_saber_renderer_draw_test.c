@@ -18,6 +18,7 @@ const MmxForeignPose *MmxBossRushForeignPose(unsigned id,unsigned set,unsigned p
   (void)id;(void)set;(void)pose;return NULL;
 }
 const uint16_t *MmxBossRushForeignColors(unsigned id) { (void)id;return NULL; }
+bool MmxBossRushForeignArtEffectClass(unsigned id,uint8_t kind) { (void)id;(void)kind;return false; }
 
 #ifndef MMX_SABER_RENDER_CACHE_DIR
 #define MMX_SABER_RENDER_CACHE_DIR ""

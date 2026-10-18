@@ -38,6 +38,13 @@ is the same convention, so X2 code takes the same X1 patches as X3 code.
 | Children | projectile class `$10` → `$03:D5C9` (vine and lightning bolts); effect class `$1F` → `$03:ECBE` (whip segments); effect class `$2B` → `$01:F068` (split halves, variants `$52`/`$53`, table `$86:EB38`) |
 | Profiles (`+$28`) | `$09` normal (Sonic Slicer `$0B`/`$14` is the weakness), `$05` flash, `$03` init; children `$03`, `$02`, `$0A` (deflects everything but Sonic Slicer) |
 
+**Spawn.** X2's class init `$00:DA22` also copies his graphics slot's OBJ
+attributes from `$7F:8300` into `+$11`. Rush has no X2 slot table, so the
+init shim writes `$29` (priority 2, palette 4) as Rhino's own init does:
+with 0 he drew behind the arena and counted as a permanent hit flash
+(found in the first playtest, 2026-10-18). His children copy `+$11` from
+him.
+
 **Entrance.** He drops from the top of X2's 256-pixel room
 (`cam_y & $1F00`, read at `$04:9ADB`) while his vine lowers: the segment
 counter `$7F:CD90` counts down every 6 frames during the fall, and the vine
