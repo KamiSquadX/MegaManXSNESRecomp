@@ -113,6 +113,26 @@ void MmxBossRushForeignPaletteHooks(uint32_t *rotate,uint32_t *fade) {
   if(rotate) *rotate=palette_hooks[0];
   if(fade) *fade=palette_hooks[1];
 }
+static uint32_t midline_reads[8];static unsigned midline_count;
+void MmxBossRushForeignSetMidlineReads(const uint32_t *pcs,unsigned count) {
+  if(count>sizeof(midline_reads)/sizeof(*midline_reads)) count=0;
+  if(count) memcpy(midline_reads,pcs,count*sizeof(*pcs));
+  midline_count=count;
+}
+unsigned MmxBossRushForeignMidlineReads(const uint32_t **pcs) {
+  if(pcs) *pcs=midline_reads;
+  return midline_count;
+}
+static MmxBossRushSpawnGuard spawn_guards[8];static unsigned spawn_guard_count;
+void MmxBossRushForeignSetSpawnGuards(const MmxBossRushSpawnGuard *guards,unsigned count) {
+  if(count>sizeof(spawn_guards)/sizeof(*spawn_guards)) count=0;
+  if(count) memcpy(spawn_guards,guards,count*sizeof(*guards));
+  spawn_guard_count=count;
+}
+unsigned MmxBossRushForeignSpawnGuards(const MmxBossRushSpawnGuard **guards) {
+  if(guards) *guards=spawn_guards;
+  return spawn_guard_count;
+}
 static uint32_t sound_shims[2];
 void MmxBossRushForeignSetSoundShims(uint32_t plain,uint32_t positional) {
   sound_shims[0]=plain;sound_shims[1]=positional;

@@ -73,9 +73,12 @@ SHIMS = {
 # X3 RAM -> X1 RAM. The $09xx/$0Axx player block is X1's $0Bxx/$0Cxx + $1D0.
 RAM = {0x09cb: 0x0b9b, 0x09cc: 0x0b9c, 0x09da: 0x0baa, 0x09dd: 0x0bad, 0x09e0: 0x0bb0,
        0x09ff: 0x0bcf, 0x0a03: 0x0bd3, 0x1e5d: 0x1e4d, 0x1e60: 0x1e50, 0x1f1f: 0x1f0e,
-       0x1f2f: 0x1f1d}  # last hit's (reaction) class, written by the damage helper
+       0x1f2f: 0x1f1d,  # last hit's (reaction) class, written by the damage helper
+       # Boss profile ($28) the flash timer restores; unused in X1 and swapped
+       # per Rush seat, so two relocated bosses never share it.
+       0x1f57: 0x1fd5}
 # X3-only globals: reads see zero, writes land in ROM and are ignored.
-ZERO = {0x0040, 0x00a1, 0x0a43, 0x1f18, 0x1f36, 0x1f54, 0x1f55, 0x1f56, 0x1f57,
+ZERO = {0x0040, 0x00a1, 0x0a43, 0x1f18, 0x1f36, 0x1f54, 0x1f55, 0x1f56,
         0x1fae, 0x1fca, 0x1fda, 0x1fe0, 0x049e, 0x0480, 0x0482, 0x0484, 0x04a0}
 ZERO_LONG = {0x001f39, 0x7fcac0}
 # Player states compared after LDA $09DA (X1 $0BAA). Hurt $0E, death $0C
@@ -86,9 +89,10 @@ PLAYER_STATES = {0x0c: 0x0c, 0x0e: 0x0e, 0x12: 0x0e, 0x1e: 0x1e, 0x74: 0x74}
 # 16-bit immediates that are RAM object pointers.
 IMMEDIATE = {0x09d8: 0x0ba8}
 
-# X1 bank $86 padding ($FA44-$FFFF is $FF fill in the USA ROM). $FF80-$FFFF
-# holds the weapon/saber collision tables, so the zero area ends below it.
-PAD_SHIMS, PAD_DATA, PAD_ZERO = 0x86fa80, 0x86fb00, 0x86fd80
+# X1 bank $86 padding ($FA44-$FFFF is $FF fill in the USA ROM). $FF40-$FFFF
+# holds the saber, weapon and Zero collision tables, so the zero area ends
+# below it.
+PAD_SHIMS, PAD_DATA, PAD_ZERO = 0x86fa80, 0x86fb00, 0x86fd40
 
 
 class Boss:
@@ -141,7 +145,11 @@ def shim_code(kind, init):
         return [0x08, 0xe2, 0x20, 0xad, 0xaa, 0x0b, 0xc9, 0x1e, 0xd0, 0x04,
                 0x22, 0x03, 0xa0, 0x84, 0x28, 0x6b]
     if kind == 'delete':
-        return [0x08, 0xe2, 0x20, 0x64, 0x00, 0x28, 0x6b]
+        # X3 $02:D928 (= X1 $82:8398): clear $00-$03 and $0E as words. X1's
+        # slot allocators test the first word, so a lone 8-bit STZ $00
+        # leaves dead objects holding their slots. REP #$20; STZ $00;
+        # STZ $02; STZ $0E; SEP #$20; RTL
+        return [0xc2, 0x20, 0x64, 0x00, 0x64, 0x02, 0x64, 0x0e, 0xe2, 0x20, 0x6b]
     if kind == 'init':
         # PHP; SEP #$30; clear $30/$1A-$1F/$18/$10; $01=2; $26/$27/$28/$16
         # from the class row (filled by the builder); PLP; RTL.

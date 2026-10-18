@@ -7,17 +7,17 @@
  *
  * X1's 1.5 MB image is padded to 2 MB on load by mirroring its last 512 KB;
  * that mirror is LoROM banks $30-$3F/$B0-$BF, which X1 never reads.
- * The end of X1's data bank $86 ($FA80-$FF7F) is $FF padding; relocated
+ * The end of X1's data bank $86 ($FA80-$FF3F) is $FF padding; relocated
  * bosses keep the tables X1's damage and terrain helpers read through that
- * data bank there ($FF80-$FFFF belongs to the weapon and saber collision
- * tables). Optionally the image can grow to 4 MB (upper half
+ * data bank there ($FF40-$FFFF holds the air/ground saber, weapon, saber-wave
+ * and Zero collision tables). Optionally the image can grow to 4 MB (upper half
  * mirroring the original 2 MB) for banks $F0-$FD.
  *
  * Every peer rebuilds identical bytes from the same verified source ROMs,
  * and romImageSize (the image identity) never changes, so nothing here is
  * part of snapshots. */
 enum { MMX_CART_EXTENSION_FIRST_BANK=0xf0, MMX_CART_EXTENSION_LAST_BANK=0xfd };
-enum { MMX_CART_PAD86_START=0x86fa80, MMX_CART_PAD86_END=0x86ff80 };
+enum { MMX_CART_PAD86_START=0x86fa80, MMX_CART_PAD86_END=0x86ff40 };
 
 /* Grow the loaded LoROM image to 4 MB once (banks $F0-$FD). */
 bool MmxCartExtensionEnsure(void);

@@ -11,6 +11,7 @@
 #include "mod_runtime.h"
 #include "recomp_launcher.h"
 #include "saber/mmx_saber_plugin.h"
+#include "saber/mmx_saber_attack.h"
 #include <stdlib.h>
 #include "mmx_wide_policy.h"
 
@@ -431,6 +432,48 @@ static void rush_drop_checks(uint8_t *start,uint8_t *expected,uint8_t *actual,si
   check(s.bosses[1].phase==MMX_RUSH_ENTERING && eagle_word(g_ram+0x165d)==s.camera_x+352 &&
       eagle_word(g_ram+0x1660)==s.camera_y+184,"second reward stays reachable at the arena's opposite edge");
   puts("MMX BOSS RUSH NATIVE HEALTH DROP CHECKS PASSED");
+}
+/* A native boss's death scene makes the player invulnerable until the stage
+ * ends. Kill Penguin with a real shot, collect his drop, then require that
+ * Chameleon can still hurt the player. */
+static void rush_death_latch_checks(void) {
+  MmxBossRushState s=MmxBossRushGetState();
+  static const uint8_t queue[]={0,5,1,3,2,4,6,7};
+  memcpy(s.queue,queue,sizeof(queue));s.queued=8;
+  check(MmxBossRushSetState(&s),"death latch fixture queues Penguin and Chameleon");
+  for(unsigned t=0;t<1500;++t) {
+    frame(0);rush_keep_players_alive();s=MmxBossRushGetState();
+    if(s.bosses[0].phase==MMX_RUSH_FIGHTING && s.bosses[1].phase==MMX_RUSH_FIGHTING) break;
+  }
+  check(s.bosses[0].id==0 && s.bosses[0].phase==MMX_RUSH_FIGHTING && s.bosses[1].id==5,
+      "death latch fixture reaches combat");
+  unsigned penguin=s.bosses[0].object,item=0;g_ram[penguin+0x27]=1;
+  for(unsigned t=0;t<600;++t) {
+    if(s.bosses[0].id==0 && s.bosses[0].phase==MMX_RUSH_FIGHTING)
+      for(unsigned d=0x1228;d<0x1428;d+=64) if(g_ram[d]) {
+        memcpy(g_ram+d+5,g_ram+penguin+5,2);memcpy(g_ram+d+8,g_ram+penguin+8,2);
+      }
+    frame(t<200 && t%20==0?SNES_PAD_Y:0);rush_keep_players_alive();s=MmxBossRushGetState();
+    if(!item) for(unsigned d=0x1628;d<0x1928;d+=48)
+      if(g_ram[d] && g_ram[d+10]==2 && MmxBossRushOwner(d)<0) {
+        item=d;g_ram[0xbcf]=0x88;
+        eagle_putword(g_ram+0xbad,eagle_word(g_ram+item+5));eagle_putword(g_ram+0xbb0,eagle_word(g_ram+item+8)+16);
+        break;
+      }
+  }
+  check(item && !g_ram[item],"Penguin's drop is collected after his native death");
+  g_ram[0xbcf]=0x90;unsigned hits=0,hp=16;
+  for(unsigned t=0;t<300;++t) {
+    s=MmxBossRushGetState();unsigned d=s.bosses[1].object;
+    eagle_putword(g_ram+d+5,eagle_word(g_ram+0xbad));eagle_putword(g_ram+d+8,eagle_word(g_ram+0xbb0)-8);
+    frame(0);
+    if((g_ram[0xbcf]&127)<hp) ++hits;
+    hp=g_ram[0xbcf]&127;
+    if(hp<4) {g_ram[0xbcf]=0x90;hp=16;}
+  }
+  fprintf(stderr,"death latch: contact hits=%u bd8=%u c32=%u\n",hits,g_ram[0xbd8],g_ram[0xc32]);
+  check(hits>=2,"the player stays hittable after another boss's native death");
+  puts("MMX BOSS RUSH DEATH LATCH CHECKS PASSED");
 }
 static void rush_chameleon_replacement_checks(uint8_t *snapshot,size_t cap) {
   size_t n=RtlSaveSnapshotToMemory(snapshot,cap);check(n,"Chameleon replacement baseline saves");
@@ -1202,6 +1245,7 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
   if(getenv("MMX_BOSS_RUSH_DEATH_TEST")) {rush_natural_death_checks();return;}
   if(getenv("MMX_BOSS_RUSH_HIT_VISUAL_TEST") || getenv("MMX_BOSS_RUSH_HIT_AUDIO_TEST")) {rush_hit_visual_checks(start,expected,cap);return;}
   if(getenv("MMX_BOSS_RUSH_CHAMELEON_TEST")) {rush_chameleon_replacement_checks(start,cap);return;}
+  if(getenv("MMX_BOSS_RUSH_DEATH_LATCH_TEST")) {rush_death_latch_checks();return;}
   if(getenv("MMX_BOSS_RUSH_REPLACEMENT_VISUAL_TEST") || getenv("MMX_BOSS_RUSH_PAUSE_VISUAL_TEST")) {
     rush_replacement_menu_checks(start,expected,cap);return;
   }

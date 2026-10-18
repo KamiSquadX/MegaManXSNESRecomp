@@ -1,5 +1,6 @@
 #include "mmx_boss_rush.h"
 #include "mmx_boss_rush_foreign.h"
+#include "mmx_cart_extension.h"
 #include "mmx_boss_rush_foreign_art.h"
 #include "mmx_boss_rush_audio.h"
 #include "mmx_boss_rush_score.h"
@@ -45,11 +46,14 @@ static const uint16_t globals[]={0x1f0c,0x1f0e,0x1f0f,0x1f13,0x1f14,0x1f15,
   0x1f16,0x1f17,0x1f18,0x1f1a,0x1f23,0x1f26,0x1f31,0x1f3b,0xc16,
   0x1e5c,0x1e5d,0x1e5e,0x1e5f,0x1e60,0x1e61,0x1e62,0x1e63,
   0xc0,0xc1,0xc9,0xca,0xcb,0xcc,0xcd,
-  0xc0c,0xbd8,0x1e54,0x1e55,0x1e74,0x1e75,0x1e76,0x1e77};
-/* Keep the $0BD8 array slot for existing snapshots, but never swap it:
- * it is the projected player's hurt latch, not a boss scene flag. Restoring
- * a boss's stale zero clears the world player's protection after contact. */
-static bool private_global(unsigned i) {return globals[i]!=0xbd8;}
+  0xc0c,0xbd8,0x1e54,0x1e55,0x1e74,0x1e75,0x1e76,0x1e77,
+  0x1fd5, /* unused by X1: a relocated boss's restored profile (X3 $1F57) */
+  0xc32};
+/* Never swap the player's hurt latches $0BD8/$0C32: restoring a boss's
+ * stale zero clears the world player's protection after contact. Their
+ * slots in the world array record them at actor entry instead (below). */
+static bool private_global(unsigned i) {return globals[i]!=0xbd8 && globals[i]!=0xc32;}
+enum { LATCH_BD8=31, LATCH_C32=39 };
 static bool playing(void) {return MmxBossRushGetState().mode==MMX_RUSH_PLAYING;}
 static void equipment(uint8_t *r);
 static unsigned object_step(unsigned d) {return d<0x1628?64:d<0x1928?48:32;}
@@ -77,6 +81,15 @@ static void actor_hook(CpuState *cpu,uint32_t pc) {
       if(!private_global(i)) continue;
       s.bosses[owner].globals[i]=g_ram[globals[i]];g_ram[globals[i]]=s.globals[i];
     }
+    /* A native boss's death scene makes the player invulnerable ($0BD8,
+     * and through it $0C32) until the stage ends. Rush keeps playing, so a
+     * boss killed during its own update leaves those latches as it found
+     * them; otherwise nothing could hurt the player for the rest of the run. */
+    const MmxBossRushBoss *b=&s.bosses[owner];
+    if(b->object==s.actor_object && b->phase==MMX_RUSH_FIGHTING && MmxBossRushNative(b->id) &&
+        !(g_ram[b->object+0x27]&127)) {
+      g_ram[0xbd8]=s.globals[LATCH_BD8];g_ram[0xc32]=s.globals[LATCH_C32];
+    }
     s.actor=0;MmxBossRushSetState(&s);return;
   }
   int owner=MmxBossRushOwner(cpu->D);
@@ -87,7 +100,7 @@ static void actor_hook(CpuState *cpu,uint32_t pc) {
   }
   s.actor=(uint8_t)(owner+1);s.actor_object=cpu->D;s.actor_s=cpu->S;
   for(unsigned i=0;i<sizeof(globals)/sizeof(*globals);++i) {
-    if(!private_global(i)) continue;
+    if(!private_global(i)) {s.globals[i]=g_ram[globals[i]];continue;}
     s.globals[i]=g_ram[globals[i]];g_ram[globals[i]]=s.bosses[owner].globals[i];
   }
   remember_objects(&s);
@@ -377,6 +390,44 @@ static void foreign_palette_hook(CpuState *cpu,uint32_t pc) {
   }
   interp_bridge_pre_opcode_redirect((pc&0xff0000)|((pc+3)&0xffff));
 }
+/* A relocated `LDA $05`/`EOR $05` midline test: use the room-relative X
+ * low byte with its X3 meaning ($80 = the arena's center) and skip the read. */
+static void foreign_midline_hook(CpuState *cpu,uint32_t pc) {
+  if(!playing()) return;
+  int owner=MmxBossRushOwner(cpu->D);if(owner<0) return;
+  MmxBossRushState s=MmxBossRushGetState();MmxBossRushBoss b=s.bosses[owner];
+  if(!b.phase || b.object!=cpu->D || MmxBossRushNative(b.id)) return;
+  int width=256+(g_ram[0x1f7a]==4?MMX_RUSH_MAMMOTH_SCROLL:0);
+  int x=(int)word(g_ram+cpu->D+5)-(int)s.camera_x-width/2+0x80;
+  uint8_t value=(uint8_t)(x<0?0:x>255?255:x),opcode=0;
+  if(!MmxCartExtensionRead(pc,&opcode,1) || (opcode!=0xa5 && opcode!=0x45)) return;
+  if(opcode==0x45) value^=(uint8_t)cpu->A;
+  cpu->A=(uint16_t)((cpu->A&0xff00)|value);
+  cpu->_flag_Z=!value;cpu->_flag_N=(value&0x80)!=0;
+  cpu->P=(cpu->P&~0x82u)|(cpu->_flag_Z?2:0)|(cpu->_flag_N?0x80:0);
+  interp_bridge_pre_opcode_redirect((pc&0xff0000)|((pc+2)&0xffff));
+}
+/* Keep a relocated body's live-child count to the children that spawned:
+ * after a failed allocation (Z clear before its BNE), or when a spawn loop
+ * stores its count (STA, A minus the children left unspawned). */
+static void foreign_spawn_hook(CpuState *cpu,uint32_t pc) {
+  uint8_t opcode=0;
+  if(!playing() || !MmxCartExtensionRead(pc,&opcode,1)) return;
+  int owner=MmxBossRushOwner(cpu->D);if(owner<0) return;
+  MmxBossRushBoss b=MmxBossRushGetState().bosses[owner];
+  if(!b.phase || b.object!=cpu->D || MmxBossRushNative(b.id)) return;
+  const MmxBossRushSpawnGuard *guards;unsigned count=MmxBossRushForeignSpawnGuards(&guards);
+  for(unsigned i=0;i<count;++i) if((guards[i].pc&0x7fffff)==(pc&0x7fffff)) {
+    if(opcode==0xd0 && !cpu->_flag_Z) {
+      uint8_t *live=g_ram+cpu->D+guards[i].counter;
+      if(*live) --*live;
+    } else if(opcode==0x85 && guards[i].remaining) {
+      unsigned stored=cpu->A&0xff,missing=g_ram[cpu->D+guards[i].remaining];
+      cpu->A=(uint16_t)((cpu->A&0xff00)|(stored>missing?stored-missing:0));
+    }
+    return;
+  }
+}
 void MmxBossRushHostFrame(void) {
 #if !MMX_VARIANT_JP
   MmxBossRushForeignSync();
@@ -414,6 +465,10 @@ void MmxBossRushHostFrame(void) {
   uint32_t rotate,fade;MmxBossRushForeignPaletteHooks(&rotate,&fade);
   if(rotate) registered&=interp_bridge_add_pre_opcode_hook(rotate,foreign_palette_hook);
   if(fade) registered&=interp_bridge_add_pre_opcode_hook(fade,foreign_palette_hook);
+  const uint32_t *midline;unsigned midlines=MmxBossRushForeignMidlineReads(&midline);
+  for(unsigned i=0;i<midlines;++i) registered&=interp_bridge_add_pre_opcode_hook(midline[i],foreign_midline_hook);
+  const MmxBossRushSpawnGuard *spawns;unsigned spawn_count=MmxBossRushForeignSpawnGuards(&spawns);
+  for(unsigned i=0;i<spawn_count;++i) registered&=interp_bridge_add_pre_opcode_hook(spawns[i].pc,foreign_spawn_hook);
   uint32_t plain,positional;MmxBossRushForeignSoundShims(&plain,&positional);
   if(plain) registered&=interp_bridge_add_pre_opcode_hook(plain,foreign_sound_hook);
   if(positional) registered&=interp_bridge_add_pre_opcode_hook(positional,foreign_sound_hook);

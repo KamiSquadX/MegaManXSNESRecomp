@@ -119,15 +119,44 @@ that bank. Rhino therefore runs with X1's `$86`:
 | `$33`, `$38`, `$34`, `$32` (X3 `$13`, `$08`, `$04`, `$02`) | palette helpers, drill class `$26`, X3 animation/motion/overlap helpers |
 | `$86:FA80`-`$FAFF` | shims (`RTL`, finished fade, resume combat, delete, class init) |
 | `$86:FB00`-`$FBB2` | his `$86` tables: body/drill hitboxes, drill spawn tables, angle table |
-| `$86:FD80`-`$FF7F` | zero/sink area for X3-only globals (`$86:FD80` + low 9 bits) |
-| `$86:FF80`-`$FFFF` | not ours: X1 weapon, saber-wave, Zero and saber collision tables |
+| `$86:FD40`-`$FF3F` | zero/sink area for X3-only globals (`$86:FD40` + low 9 bits) |
+| `$86:FF40`-`$FFFF` | not ours: air saber `$FF40`, weapon boxes `$FF80`, saber wave `$FFA0`, Zero bounds `$FFB0`, ground saber `$FFD8` |
 
 All copied banks sit in X1's unused `$30`-`$3F` padding; the `$86` tail is
 `$FF` padding in the USA ROM. Clearing restores both. The patch window
-stops at `$86:FF7F`: the zero area used to cover `$FE00`-`$FFFF`, so it
-wiped the saber hitboxes (Saber Zero's slash did 0) and, as X, the
-weapon code's `$FF` fill reached Rhino's X3 globals (he froze after one
-frame).
+stops at `$86:FF3F`. Overlapping that tail broke three things: the saber
+disables a collision window it does not recognize (ground slash did 0, then
+the air/dash slash lost its hitbox), and the weapon code's `$FF` fill
+reached Rhino's X3 globals as X (he froze after one frame).
+
+**X3 globals that are read back** need real storage instead of the sink:
+`$1F57` (his profile, restored by the flash timer `$02:DF64` when a hit's
+invulnerable flash ends) maps to X1 `$1FD5`, unused by X1 and swapped per
+Rush seat with the other boss globals. In the sink it read 0, X1's deflect
+row, so after his first flash nothing could hurt him again. `$1F54`-`$1F56`
+are only read by his drills to delete themselves when he dies, which Rush
+already does, and stay in the sink.
+
+**Room midline.** X3 boss rooms start on 256-pixel boundaries, so Rhino
+tests bit 7 of his X low byte for which half of the room he is in
+(`LDA $05`/`EOR $05` at `$3F:E8C1`, `$E8C7`, `$EB30`, `$EB50`). His
+stop-and-fire charge skips the wall check and stops at that midline, so in
+the Rush arena he slid through the right wall. Those four reads are hooked
+and answered relative to the arena's center.
+
+**Delete shim.** X3's delete (`$02:D928`, same as X1 `$82:8398`) clears the
+object's first words. The shim used to clear only byte 0, and X1's slot
+allocator tests the first word, so each dead drill kept its projectile slot:
+after two volleys he could not spawn drills, his live-drill count `$3D`
+stayed at 3, and he stopped firing volleys and the stop-and-fire spread.
+
+**Shared projectile pool.** Rhino sets his live-drill count before his
+volley spawns and after his spread loop, assuming every spawn succeeds. In
+Rush he shares X1's eight enemy-projectile slots with the other boss
+(Penguin's ice shots and statues can fill them all). Spawn guards take
+unspawned drills back out of `$3D`: after a failed allocation in the volley
+(`$3F:EC08`) and at the spread's count store (`$EA85`, minus the `$3A`
+drills its loop could not spawn).
 
 **Classification** (anything else fails generation):
 
@@ -268,7 +297,7 @@ stay character-agnostic by relying only on what every character shares:
   HP and the states `$0C` death, `$0E` hurt and `$1E` scripted lock;
 - attacks that reach enemies through X1's collision and the `$86:EF37`
   damage rows (Zero's buster and saber both tag `$1228` shots);
-- nothing in `$86:FF80`-`$FFFF`, which the characters' collision tables use.
+- nothing in `$86:FF40`-`$FFFF`, which the characters' collision tables use.
 
 A new character that keeps these works with every relocated boss; one that
 does not needs its own entry in this list and a run of the fixture.

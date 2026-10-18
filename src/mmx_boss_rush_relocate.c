@@ -30,6 +30,8 @@ typedef struct MmxRelocBoss {
   const uint8_t *effects;size_t effect_count;
   const MmxBossRushWeakness *weaknesses;size_t weakness_count;
   uint32_t palette_rotate,palette_fade; /* relocated helpers Rush runs privately */
+  const uint32_t *midline;size_t midline_count; /* room-half tests (LDA $05) */
+  const MmxBossRushSpawnGuard *spawns;size_t spawn_count;
 } MmxRelocBoss;
 #define COUNT(a) (sizeof(a)/sizeof(*(a)))
 /* X1 shot classes: Homing Torpedo $0E, Shotgun Ice $07; charged +9. */
@@ -43,6 +45,16 @@ static const MmxBossRushWeakness k_rhino_weaknesses[]={
   {2,1,{X1_TORPEDO,X1_TORPEDO+CHARGED},{X1_TORPEDO,X1_TORPEDO+CHARGED}}, /* X3 Acid Burst */
   {0,1,{X1_ICE,X1_ICE+CHARGED},{X1_ICE,X1_ICE+CHARGED}},                 /* X1 Homing Torpedo */
 };
+/* Which half of the room he is in: turning away from a wall ($3F:EB30),
+ * allowing the stop-and-fire charge only toward the center ($EB50), and
+ * stopping that charge, which skips the wall check, at the midline
+ * ($E8C1/$E8C7). */
+static const uint32_t k_rhino_midline[]={0x3fe8c1,0x3fe8c7,0x3feb30,0x3feb50};
+/* $3D counts his live volley and spread drills. The volley sets it before
+ * its spawns ($3F:EC08 after each allocation); the spread stores 3 after its
+ * loop, which stops with $3A drills unspawned ($EA85). The pin carrier
+ * ($EBE7) is not counted. */
+static const MmxBossRushSpawnGuard k_rhino_spawns[]={{0x3fec08,0x3d,0},{0x3fea85,0x3d,0x3a}};
 static const MmxRelocBoss kBosses[]={
   {"TUNNEL RHINO",3,k_rhino_roster_id,k_rhino_body,2,4,
    k_rhino_banks,COUNT(k_rhino_banks),k_rhino_copies,COUNT(k_rhino_copies),
@@ -51,10 +63,11 @@ static const MmxRelocBoss kBosses[]={
    k_rhino_sound_bank,k_rhino_sfx,k_rhino_sfx_pan,k_rhino_effects,COUNT(k_rhino_effects),
    k_rhino_weaknesses,COUNT(k_rhino_weaknesses),
    /* X3 $13:F7D6 rotates OBJ colors 1-15; $13:F7FC fades them back. */
-   0x33f7d6,0x33f7fc},
+   0x33f7d6,0x33f7fc,k_rhino_midline,COUNT(k_rhino_midline),
+   k_rhino_spawns,COUNT(k_rhino_spawns)},
 };
 /* Zero/sink area for X3-only globals: reads see zero, writes hit ROM. */
-enum { ZERO_AREA=0x86fd80, ZERO_SIZE=0x200 };
+enum { ZERO_AREA=0x86fd40, ZERO_SIZE=0x200 };
 
 static bool source(const uint8_t *rom,size_t size,uint32_t address,size_t n,const uint8_t **out) {
   if((address&0xffff)<0x8000) return false;
@@ -115,12 +128,15 @@ static bool build(const MmxRelocBoss *boss,const uint8_t *rom,size_t size,char *
   }
   MmxBossRushForeignSetSoundShims(boss->sfx,boss->sfx_pan);
   MmxBossRushForeignSetPaletteHooks(boss->palette_rotate,boss->palette_fade);
+  MmxBossRushForeignSetMidlineReads(boss->midline,(unsigned)boss->midline_count);
+  MmxBossRushForeignSetSpawnGuards(boss->spawns,(unsigned)boss->spawn_count);
   MmxBossRushAudioPrepareForeign(boss->roster_id,rom,size,boss->sound_bank,boss->effects,(unsigned)boss->effect_count);
   return true;
 }
 bool MmxBossRushForeignBuild(char *error,size_t cap) {
   for(size_t i=0;i<COUNT(kBosses);++i) MmxBossRushForeignSetController(kBosses[i].roster_id,0);
   MmxBossRushForeignSetSoundShims(0,0);MmxBossRushForeignSetPaletteHooks(0,0);
+  MmxBossRushForeignSetMidlineReads(NULL,0);MmxBossRushForeignSetSpawnGuards(NULL,0);
   MmxCartExtensionClear();
   if(!MmxCartPatchAvailable()) {
     snprintf(error,cap,"The loaded Mega Man X image cannot host relocated bosses.");return false;

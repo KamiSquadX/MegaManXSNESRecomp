@@ -41,6 +41,24 @@ const MmxBossRushWeakness *MmxBossRushForeignWeakness(unsigned id,unsigned page,
  * body's colors, the other fades them back (carry set while unfinished). */
 void MmxBossRushForeignSetPaletteHooks(uint32_t rotate,uint32_t fade);
 void MmxBossRushForeignPaletteHooks(uint32_t *rotate,uint32_t *fade);
+/* Relocated `LDA $05`/`EOR $05` reads where an X2/X3 body tests which half of its
+ * room it is in: their rooms start on 256-pixel boundaries, so bit 7 of the
+ * X low byte is the midline. Rush answers them relative to its arena. */
+void MmxBossRushForeignSetMidlineReads(const uint32_t *pcs,unsigned count);
+unsigned MmxBossRushForeignMidlineReads(const uint32_t **pcs);
+/* X2/X3 bodies keep a count of their live children and assume every spawn
+ * succeeds; in their own games the pool never runs out, but in Rush two
+ * bosses share X1's eight projectile slots. A guard at a relocated `BNE`
+ * after a slot allocation takes one child out of field `counter` when the
+ * allocation failed. A guard at a relocated `STA counter` (a count stored
+ * after a spawn loop) subtracts field `remaining`, the children the loop
+ * could not spawn, from the stored value. */
+typedef struct MmxBossRushSpawnGuard {
+  uint32_t pc;
+  uint8_t counter, remaining;
+} MmxBossRushSpawnGuard;
+void MmxBossRushForeignSetSpawnGuards(const MmxBossRushSpawnGuard *guards,unsigned count);
+unsigned MmxBossRushForeignSpawnGuards(const MmxBossRushSpawnGuard **guards);
 /* Rebuild every relocated body for the loaded source ROMs into the cart's
  * patch windows (mmx_boss_rush_relocate.c). Restores the cart first. */
 bool MmxBossRushForeignBuild(char *error,size_t error_size);

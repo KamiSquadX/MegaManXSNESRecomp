@@ -124,6 +124,58 @@ static void rush_rhino_weakness_checks(uint8_t *snapshot,size_t size,unsigned ob
   check(acid.profile==5,"Rhino's weakness flinch is invulnerable");
   check(!deflect.damage && !slash_deflect.damage,"his drill-charge row deflects every attack");
 }
+/* A long fight: every hit flashes him with the invulnerable profile and the
+ * flash restores his own profile (X3 $1F57), so hits keep landing; dead drills
+ * give their projectile slots back, so he keeps firing volleys; and every
+ * charge, including stop-and-fire, keeps him inside the arena. */
+static void rush_rhino_long_fight_checks(uint8_t *snapshot,size_t size,unsigned object) {
+  check(RtlLoadSnapshotFromMemory(snapshot,size),"Rhino long fight restores combat");
+  MmxBossRushState s=MmxBossRushGetState();
+  int width=256+(g_ram[0x1f7a]==4?MMX_RUSH_MAMMOTH_SCROLL:0),min_x=1<<30,max_x=-(1<<30);
+  unsigned hits=0,hp=g_ram[object+0x27]&127,spreads=0,volleys=0,last=0,stale=0,deflecting=0,charging=0,phantom=0;
+  bool drills_alive=false;
+  for(unsigned t=0;t<6000;++t) {
+    s=MmxBossRushGetState();
+    if(s.bosses[1].object!=object || s.bosses[1].id!=23) break;
+    for(unsigned d=0x1228;d<0x1428;d+=64) if(g_ram[d]) {
+      memcpy(g_ram+d+5,g_ram+object+5,2);memcpy(g_ram+d+8,g_ram+object+8,2);
+    }
+    frame(t%24==0?SNES_PAD_Y:0);rush_keep_players_alive();
+    unsigned h=g_ram[object+0x27]&127,behavior=g_ram[object+1]<<8|g_ram[object+2];
+    if(h<hp) ++hits;
+    if(h<4) {g_ram[object+0x27]=(uint8_t)((g_ram[object+0x27]&128)|30);h=30;}
+    hp=h;
+    if(behavior==0x0206 && last!=0x0206) ++spreads;
+    /* The deflect row belongs to his drill charge (2) and its wind-down (10). */
+    if(!g_ram[object+0x28] && behavior!=0x0202 && behavior!=0x020a) ++deflecting;
+    if(behavior==0x0202) ++charging;
+    last=behavior;
+    bool alive=false;unsigned live=0;
+    for(unsigned d=0x1428;d<0x1628;d+=64) {
+      if(g_ram[d] && g_ram[d+10]==0x26 && MmxBossRushOwner(d)==1) {alive=true;if(g_ram[d+0x3c]!=2) ++live;}
+      if(!g_ram[d] && g_ram[d+1]) ++stale;
+    }
+    /* $3D counts drills he believes are alive; outside the volley and
+     * spread spawns it must never exceed the drills that exist. */
+    if(behavior!=0x0204 && behavior!=0x0206 && g_ram[object+0x3d]>live) ++phantom;
+    if(alive && !drills_alive) ++volleys;
+    drills_alive=alive;
+    int x=(int)eagle_word(g_ram+object+5)-(int)s.camera_x;
+    if(x<min_x) min_x=x;
+    if(x>max_x) max_x=x;
+  }
+  fprintf(stderr,"rhino long fight: hits=%u volleys=%u spreads=%u stale=%u deflecting=%u phantom=%u drill-charge=%u x=%d..%d width=%d\n",
+      hits,volleys,spreads,stale,deflecting,phantom,charging,min_x,max_x,width);
+  check(hits>=5 && !deflecting,"Rhino keeps taking damage after his hit flashes end");
+  check(!stale,"deleted drills leave their projectile slots free");
+  check(!phantom && volleys>=2,"Rhino keeps firing drills for the whole fight");
+  check(min_x>=24 && max_x<=width-24,"Rhino stays inside the arena on every charge");
+  uint8_t tail=0;
+  check(!MmxCartExtensionWrite(0x86ff40,&tail,1),"relocation never writes the saber/weapon tables at $86:FF40");
+  /* Zero's air and dash slashes use the $86:FF40 window; an overwritten
+   * window disables them for the rest of the session. */
+  check(!MmxSaberAttackCollisionWarningCount(),"Zero's ground and air saber windows stay installed");
+}
 /* Character matrix: enable the real packages through the launcher's mod
  * provider on an isolated catalog copy, exactly as a player would: Boss
  * Rush, X3 Mavericks and X3 Weapons with the X3 ROM, and for the Zero
@@ -368,6 +420,7 @@ static void rush_rhino_checks(uint8_t *start,size_t cap,const char *x3) {
   for(unsigned t=0;t<60;++t) {frame(0);rush_keep_players_alive();}
   check(!memcmp(first,g_ram,sizeof(first)),"Rhino replay is deterministic");
   rush_rhino_pin_palette_checks(start,n,object);
+  rush_rhino_long_fight_checks(start,n,object);
   rush_rhino_weakness_checks(start,n,object,x3);
   check(RtlLoadSnapshotFromMemory(start,n),"Rhino seat snapshot restores for defeat");
   unsigned defeated=MmxBossRushGetState().defeated;
