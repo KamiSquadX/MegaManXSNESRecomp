@@ -89,7 +89,7 @@ static void rush_sponge_checks(uint8_t *start,size_t cap,const char *x2) {
     if(s.bosses[1].phase && s.bosses[1].id==13) object=s.bosses[1].object;
   }
   check(object!=0,"Wire Sponge spawns in seat 1");
-  unsigned seen_behavior=0,max_hp=0,last=0xffffff,fighting_at=0,shots=0,effects_seen=0;
+  unsigned seen_behavior=0,max_hp=0,last=0xffffff,fighting_at=0,shots=0,effects_seen=0,shot_pixels=0,segment_pixels=0;
   int min_x=1<<30,max_x=-(1<<30),min_y=1<<30,max_y=-(1<<30);
   for(unsigned t=0;t<2400;++t) {
     frame(0);rush_keep_players_alive();s=MmxBossRushGetState();
@@ -108,14 +108,31 @@ static void rush_sponge_checks(uint8_t *start,size_t cap,const char *x2) {
       if(y>max_y) max_y=y;
     }
     if((g_ram[object+0x27]&127)>max_hp) max_hp=g_ram[object+0x27]&127;
-    for(unsigned d=0x1428;d<0x1628;d+=64) if(g_ram[d] && g_ram[d+10]==0x10 && MmxBossRushOwner(d)==1) ++shots;
-    for(unsigned d=0x1928;d<0x1d08;d+=32) if(g_ram[d] && g_ram[d+10]==0x1f && MmxBossRushOwner(d)==1) ++effects_seen;
+    /* His vine/seed/lightning shots and whip segments draw with his X2 art
+     * (once each, a few frames after they appear). */
+    unsigned shot=0,segment=0;
+    for(unsigned d=0x1428;d<0x1628;d+=64) if(g_ram[d] && g_ram[d+10]==0x10 && MmxBossRushOwner(d)==1) {++shots;shot=d;}
+    for(unsigned d=0x1928;d<0x1d08;d+=32) if(g_ram[d] && g_ram[d+10]==0x1f && MmxBossRushOwner(d)==1) {++effects_seen;segment=d;}
+    static uint32_t attack_image[256*224];
+    if(shot && shots>=8 && !shot_pixels && MmxRendererDraw(attack_image,(MmxRenderView){256,0,4.0/3.0},true)) {
+      shot_pixels=rush_rhino_art_pixels(attack_image,shot,13);
+      fprintf(stderr,"sponge shot art pixels=%u attr=%02x set=%02x pose=%02x\n",shot_pixels,g_ram[shot+0x11],
+          g_ram[shot+0x16],g_ram[shot+0x17]);
+      if(getenv("MMX_SPONGE_HALVES_PPM")) rush_rhino_save_ppm("rush-sponge-shot.ppm",attack_image);
+    }
+    if(segment && effects_seen>=8 && !segment_pixels && MmxRendererDraw(attack_image,(MmxRenderView){256,0,4.0/3.0},true)) {
+      segment_pixels=rush_rhino_art_pixels(attack_image,segment,13);
+      fprintf(stderr,"sponge whip art pixels=%u attr=%02x set=%02x pose=%02x\n",segment_pixels,g_ram[segment+0x11],
+          g_ram[segment+0x16],g_ram[segment+0x17]);
+      if(getenv("MMX_SPONGE_HALVES_PPM")) rush_rhino_save_ppm("rush-sponge-whip.ppm",attack_image);
+    }
   }
   s=MmxBossRushGetState();
   fprintf(stderr,"sponge fighting_at=%u behaviors=%08x x=%d..%d y=%d..%d hp=%u shot-frames=%u effect-frames=%u phase=%u\n",
       fighting_at,seen_behavior,min_x,max_x,min_y,max_y,max_hp,shots,effects_seen,s.bosses[1].phase);
   check(fighting_at && s.bosses[1].phase==MMX_RUSH_FIGHTING,"Wire Sponge's original intro hands over to combat");
   check(max_hp==32,"Wire Sponge's intro fills his health meter");
+  check(shot_pixels>=40 && segment_pixels>=40,"Wire Sponge's shots and whip draw with his X2 art");
   const MmxForeignPose *art=MmxBossRushForeignPose(13,g_ram[object+0x16],g_ram[object+0x17]&0x7f);
   fprintf(stderr,"sponge art: colors=%d set=%02x pose=%02x -> %dx%d\n",MmxBossRushForeignColors(13)!=NULL,
       g_ram[object+0x16],g_ram[object+0x17],art?art->width:0,art?art->height:0);
