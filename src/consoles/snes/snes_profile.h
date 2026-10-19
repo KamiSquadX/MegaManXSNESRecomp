@@ -39,6 +39,33 @@ static const int kSnesGamepadBindOrder[LNG_SNES_PAD_BUTTON_COUNT] = {
 #define LNG_SNES_GAMEPAD_BIND_COLS 3
 #define LNG_SNES_GAMEPAD_BIND_ROWS 4
 
+// ---- modern pad (GameInfo.snes_modern_pad) ------------------------------------
+// The SNES twelve, then a modern pad's extras. Indices 12..19 are the
+// keybinds.ini l2, r2, l3, r3, rs_up, rs_down, rs_left, rs_right slots and
+// the [GamepadMap] ControlsExt line, in that order.
+static const ButtonDef kSnesModernPadButtons[] = {
+    { "Up", 0 }, { "Down", 1 }, { "Left", 2 }, { "Right", 3 },
+    { "A", 4 }, { "B", 5 }, { "X", 6 }, { "Y", 7 },
+    { "L", 8 }, { "R", 9 }, { "Start", 10 }, { "Select", 11 },
+    { "L2", 12 }, { "R2", 13 }, { "L3", 14 }, { "R3", 15 },
+    { "R.S. Up", 16 }, { "R.S. Down", 17 }, { "R.S. Left", 18 }, { "R.S. Right", 19 },
+};
+#define LNG_SNES_MODERN_PAD_BUTTON_COUNT \
+    ((int)(sizeof(kSnesModernPadButtons) / sizeof(kSnesModernPadButtons[0])))
+
+// A fourth column for the triggers and stick clicks; the right stick stacks
+// under it, beside Auto Map / Reset to Defaults.
+static const int kSnesModernGamepadBindOrder[LNG_SNES_MODERN_PAD_BUTTON_COUNT] = {
+    0, 1, 2, 3,          // Up Down Left Right
+    4, 5, 6, 7,          // A B X Y
+    8, 9, 10, 11,        // L R Start Select
+    12, 13, 14, 15,      // L2 R2 L3 R3
+    16, 17, 18, 19,      // R.S. Up Down Left Right (beside the buttons)
+};
+#define LNG_SNES_MODERN_GAMEPAD_BIND_COLS 4
+#define LNG_SNES_MODERN_GAMEPAD_BIND_SIDE 4
+#define LNG_SNES_EXT_COUNT 8   /* modern-pad extras after the SNES twelve */
+
 // ---- panel composition --------------------------------------------------------
 static const char* const kPanelsSettingsSnes[]  = { "video", "audio", "hotkeys", NULL };
 
@@ -48,58 +75,72 @@ static const char* const kSnesRomPatterns[] = { "*.sfc", "*.smc", "*.fig", "*.sw
     ((int)(sizeof(kSnesRomPatterns) / sizeof(kSnesRomPatterns[0])))
 
 // ---- SystemProfile row ----------------------------------------------------------
-static const SystemProfile kSystemProfileSnes = {
-    /* id       */ "snes",
-    /* platform */ "SUPER NINTENDO",
-    /* theme    */ NULL,        // default CRT-console theme
-    /* rom_noun */ "ROM",
-    /* controller */ {
-        kSnesPadButtons, LNG_SNES_PAD_BUTTON_COUNT,
-        "pad.tga", NULL, NULL,
-        /* max_players */ 2, /* has_pad_mode */ 0,
-        /* binds_per_input */ 1, /* modes */ NULL, /* mode_count */ 0,
-        /* has_pad_binds */ 1,
-        /* pad_bind_order */ kSnesGamepadBindOrder,
-        /* pad_bind_cols  */ LNG_SNES_GAMEPAD_BIND_COLS,
-        /* pad_bind_rows  */ LNG_SNES_GAMEPAD_BIND_ROWS,
-    },
-    /* save */    { SAVE_SRAM, 1, NULL },
-    /* video */   {
-        /*window_scale*/1, /*fullscreen*/1, /*linear_filter*/1, /*widescreen*/1,
-        /*renderer*/0, /*supersampling*/0, /*screen_kind*/0, /*frame_interp*/0, /*aspect*/0,
-        /*texture_filter*/0, /*antialiasing*/0, /*spu_hq*/0, /*skip_fmv*/0, /*turbo_loads*/0,
-        /*bios*/0, /*deadzone*/0,
-    },
-    /* verify */  { 0, NULL },
-    /* hotkeys_mask */ (uint32_t)(LNG_HOTKEYS_ALL |
-                                   /* Save-state slot browser: the SNES runner
-                                    * has had snes_savestate_menu.c for a while,
-                                    * but the bind was unreachable here because
-                                    * LNG_HOTKEYS_ALL stops at bit 10 and this
-                                    * one is bit 15 — ports hardcoded a key
-                                    * instead. Note the framework leaves it
-                                    * UNBOUND by default (F1..F10 are the ten
-                                    * LoadState slots on SNES), so this row
-                                    * shows "(unbound)" until a player picks a
-                                    * key or a port's config.ini names one. */
-                                   (1u << LNG_HK_SAVE_STATE_MENU) |
-                                   /* Rewind: added now that snes_rewind.c
-                                    * exists behind it. It was deliberately
-                                    * withheld while there was nothing to
-                                    * bind, on the same principle as
-                                    * n64_profile.h's debug-tools note -- a
-                                    * control that does nothing is worse than
-                                    * an absent one. Unbound by default here
-                                    * too: F8 is LoadState slot 8. */
-                                   (1u << LNG_HK_REWIND)),
-    /* panels_dashboard  */ kPanelsDashboardCommon,
-    /* panels_settings   */ kPanelsSettingsSnes,
-    /* panels_controller */ kPanelsControllerCommon,
-    /* screen_kind_names */ NULL,   /* legacy Raw/CRT/Composite/Trinitron set */
-    /* screen_kind_count */ 0,
-    /* rom_filter        */ { kSnesRomPatterns, LNG_SNES_ROM_PATTERN_COUNT,
-                              "SNES ROM (.sfc .smc .fig .swc)" },
-};
+// One row, two pads: the classic twelve-button page and the modern-pad page
+// share every other module.
+#define LNG_SNES_SYSTEM_PROFILE(buttons, count, order, cols, side) { \
+    /* id       */ "snes", \
+    /* platform */ "SUPER NINTENDO", \
+    /* theme    */ NULL,        /* default CRT-console theme */ \
+    /* rom_noun */ "ROM", \
+    /* controller */ { \
+        buttons, count, \
+        "pad.tga", NULL, NULL, \
+        /* max_players */ 2, /* has_pad_mode */ 0, \
+        /* binds_per_input */ 1, /* modes */ NULL, /* mode_count */ 0, \
+        /* has_pad_binds */ 1, \
+        /* pad_bind_order */ order, \
+        /* pad_bind_cols  */ cols, \
+        /* pad_bind_rows  */ LNG_SNES_GAMEPAD_BIND_ROWS, \
+        /* has_pak        */ 0, \
+        /* pad_bind_side  */ side, \
+    }, \
+    /* save */    { SAVE_SRAM, 1, NULL }, \
+    /* video */   { \
+        /*window_scale*/1, /*fullscreen*/1, /*linear_filter*/1, /*widescreen*/1, \
+        /*renderer*/0, /*supersampling*/0, /*screen_kind*/0, /*frame_interp*/0, /*aspect*/0, \
+        /*texture_filter*/0, /*antialiasing*/0, /*spu_hq*/0, /*skip_fmv*/0, /*turbo_loads*/0, \
+        /*bios*/0, /*deadzone*/0, \
+    }, \
+    /* verify */  { 0, NULL }, \
+    /* hotkeys_mask */ (uint32_t)(LNG_HOTKEYS_ALL | \
+                                   /* Save-state slot browser: the SNES runner \
+                                    * has had snes_savestate_menu.c for a while, \
+                                    * but the bind was unreachable here because \
+                                    * LNG_HOTKEYS_ALL stops at bit 10 and this \
+                                    * one is bit 15 — ports hardcoded a key \
+                                    * instead. Note the framework leaves it \
+                                    * UNBOUND by default (F1..F10 are the ten \
+                                    * LoadState slots on SNES), so this row \
+                                    * shows "(unbound)" until a player picks a \
+                                    * key or a port's config.ini names one. */ \
+                                   (1u << LNG_HK_SAVE_STATE_MENU) | \
+                                   /* Rewind: added now that snes_rewind.c \
+                                    * exists behind it. It was deliberately \
+                                    * withheld while there was nothing to \
+                                    * bind, on the same principle as \
+                                    * n64_profile.h's debug-tools note -- a \
+                                    * control that does nothing is worse than \
+                                    * an absent one. Unbound by default here \
+                                    * too: F8 is LoadState slot 8. */ \
+                                   (1u << LNG_HK_REWIND)), \
+    /* panels_dashboard  */ kPanelsDashboardCommon, \
+    /* panels_settings   */ kPanelsSettingsSnes, \
+    /* panels_controller */ kPanelsControllerCommon, \
+    /* screen_kind_names */ NULL,   /* legacy Raw/CRT/Composite/Trinitron set */ \
+    /* screen_kind_count */ 0, \
+    /* rom_filter        */ { kSnesRomPatterns, LNG_SNES_ROM_PATTERN_COUNT, \
+                              "SNES ROM (.sfc .smc .fig .swc)" }, \
+ \
+}
+
+static const SystemProfile kSystemProfileSnes = LNG_SNES_SYSTEM_PROFILE(
+    kSnesPadButtons, LNG_SNES_PAD_BUTTON_COUNT, kSnesGamepadBindOrder,
+    LNG_SNES_GAMEPAD_BIND_COLS, 0);
+static const SystemProfile kSystemProfileSnesModern = LNG_SNES_SYSTEM_PROFILE(
+    kSnesModernPadButtons, LNG_SNES_MODERN_PAD_BUTTON_COUNT,
+    kSnesModernGamepadBindOrder, LNG_SNES_MODERN_GAMEPAD_BIND_COLS,
+    LNG_SNES_MODERN_GAMEPAD_BIND_SIDE);
+#undef LNG_SNES_SYSTEM_PROFILE
 
 // ---- name aliases + ABI capability defaults -------------------------------------
 static inline int launcher_console_is_snes(const char* name) {

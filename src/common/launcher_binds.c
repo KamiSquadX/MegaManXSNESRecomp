@@ -44,10 +44,14 @@ const char* g_launcher_keybinds_path = NULL;
 // can't parse at all). Every profile that still uses this table today
 // borrows kSnesPadButtons (launcher_system.h stub macro), so it always
 // matches LNG_SNES_PAD_BUTTON_COUNT.
-static const int kKbIndexSnes[LNG_SNES_PAD_BUTTON_COUNT] = {
+static const int kKbIndexSnes[LNG_SNES_MODERN_PAD_BUTTON_COUNT] = {
     /* UP    */ 8, /* DOWN  */ 9, /* LEFT  */ 10, /* RIGHT */ 11,
     /* A     */ 0, /* B     */ 1, /* X     */ 2,  /* Y     */ 3,
     /* L     */ 4, /* R     */ 5, /* START */ 6,  /* SELECT*/ 7,
+    /* The modern pad's extras (snes_profile.h kSnesModernPadButtons) are
+     * keybinds.c's l2, r2, l3, r3, rs_up, rs_down, rs_left, rs_right. */
+    /* L2    */ 12, /* R2  */ 13, /* L3   */ 14, /* R3    */ 15,
+    /* RS U  */ 16, /* RS D */ 17, /* RS L */ 18, /* RS R  */ 19,
 };
 
 // Resolve the keybinds-index table (and its length) for the model's ACTIVE
@@ -61,7 +65,9 @@ static const int* active_kb_index(const LauncherModel* m, int* out_n) {
         *out_n = LNG_GBA_PAD_BUTTON_COUNT;
         return kGbaKbIndex;
     }
-    *out_n = LNG_SNES_PAD_BUTTON_COUNT;
+    /* The classic page reads the first twelve; a modern pad all twenty. */
+    *out_n = prof && prof->controller.button_count == LNG_SNES_MODERN_PAD_BUTTON_COUNT
+        ? LNG_SNES_MODERN_PAD_BUTTON_COUNT : LNG_SNES_PAD_BUTTON_COUNT;
     return kKbIndexSnes;
 }
 
@@ -258,10 +264,11 @@ static int is_snes_profile(const LauncherModel* m) {
 }
 
 static void snes_gamepad_read_controls(int player, char out[LNG_SNES_PAD_BUTTON_COUNT][48]);
+static void snes_gamepad_read_ext(int player, char out[LNG_SNES_EXT_COUNT][48]);
 static void snes_gamepad_label(const char* token, char* out, size_t cap);
 static int snes_gamepad_set_button(LauncherModel* m, int player, int b,
                                    int kind, int code, int axis_dir);
-static void snes_gamepad_reset_player(int player);
+static void snes_gamepad_reset_player(int player, int modern);
 
 // Display label for a Genesis gamepad bind: SDL's own controller button/axis
 // names ("dpup", "a", "leftshoulder"; axes get a direction suffix, "leftx+").
@@ -361,6 +368,15 @@ static void reload_player_display(LauncherModel* m, int player) {
         for (int b = 0; b < LNG_SNES_PAD_BUTTON_COUNT; ++b)
             snes_gamepad_label(controls[b], m->pad_binds[player - 1][b],
                                sizeof(m->pad_binds[player - 1][b]));
+        if (n > LNG_SNES_PAD_BUTTON_COUNT) {
+            char ext[LNG_SNES_EXT_COUNT][48];
+            snes_gamepad_read_ext(player - 1, ext);
+            for (int i = 0; i < LNG_SNES_EXT_COUNT; ++i) {
+                const int b = LNG_SNES_PAD_BUTTON_COUNT + i;
+                snes_gamepad_label(ext[i], m->pad_binds[player - 1][b],
+                                   sizeof(m->pad_binds[player - 1][b]));
+            }
+        }
     }
 }
 
@@ -464,6 +480,17 @@ static const char* snes_gamepad_config_key(int player) {
     return player == 1 ? "ControlsP2" : "Controls";
 }
 
+/* The modern pad's extras live on their own [GamepadMap] line, in keybinds
+ * order (L2, R2, L3, R3, R.S. Up, Down, Left, Right), so the twelve-entry
+ * Controls line every SNES build reads stays exactly as it was. */
+static const char* const kSnesGamepadDefaultExt[LNG_SNES_EXT_COUNT] = {
+    "L2", "R2", "L3", "R3", "RsUp", "RsDown", "RsLeft", "RsRight",
+};
+
+static const char* snes_gamepad_ext_key(int player) {
+    return player == 1 ? "ControlsExtP2" : "ControlsExt";
+}
+
 static char* trim_token(char* s) {
     while (*s == ' ' || *s == '\t') ++s;
     char* end = s + strlen(s);
@@ -476,16 +503,16 @@ static int token_eq(const char* a, const char* b) {
     return ieq(a, strlen(a), b);
 }
 
-static void snes_gamepad_read_config_order(int player,
-                                           char out[LNG_SNES_PAD_BUTTON_COUNT][48]) {
-    for (int i = 0; i < LNG_SNES_PAD_BUTTON_COUNT; ++i)
-        copy_str(out[i], sizeof(out[i]), kSnesGamepadDefaultControls[i]);
+static void snes_gamepad_read_line(const char* key, int count,
+                                   const char* const* defaults,
+                                   char out[][48]) {
+    for (int i = 0; i < count; ++i)
+        copy_str(out[i], sizeof(out[i]), defaults[i]);
 
     long len = 0;
     char* text = read_whole(config_path(), &len);
     if (!text) return;
 
-    const char* key = snes_gamepad_config_key(player);
     int in_gamepad = 0;
     char* save = NULL;
     for (char* line = strtok_r(text, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
@@ -513,7 +540,7 @@ static void snes_gamepad_read_config_order(int player,
          * control after a cleared D-Pad Up one seat to the left. */
         int i = 0;
         char* item = value;
-        while (i < LNG_SNES_PAD_BUTTON_COUNT) {
+        while (i < count) {
             char* comma = strchr(item, ',');
             if (comma) *comma = 0;
             copy_str(out[i], sizeof(out[i]), trim_token(item));
@@ -524,6 +551,27 @@ static void snes_gamepad_read_config_order(int player,
         break;
     }
     free(text);
+}
+
+static void snes_gamepad_read_config_order(int player,
+                                           char out[LNG_SNES_PAD_BUTTON_COUNT][48]) {
+    snes_gamepad_read_line(snes_gamepad_config_key(player),
+                           LNG_SNES_PAD_BUTTON_COUNT,
+                           kSnesGamepadDefaultControls, out);
+}
+
+static void snes_gamepad_read_ext(int player, char out[LNG_SNES_EXT_COUNT][48]) {
+    snes_gamepad_read_line(snes_gamepad_ext_key(player), LNG_SNES_EXT_COUNT,
+                           kSnesGamepadDefaultExt, out);
+}
+
+static void snes_gamepad_write_line(const char* key, int count, char controls[][48]) {
+    char value[768] = {};
+    for (int i = 0; i < count; ++i) {
+        if (i) strncat(value, ", ", sizeof(value) - strlen(value) - 1);
+        strncat(value, controls[i], sizeof(value) - strlen(value) - 1);
+    }
+    launcher_ini_kv_write(config_path(), "GamepadMap", key, value);
 }
 
 static void snes_gamepad_read_controls(int player,
@@ -560,6 +608,10 @@ static void snes_gamepad_label(const char* token, char* out, size_t cap) {
     if (token_eq(token, "R2"))        { copy_str(out, cap, "R2"); return; }
     if (token_eq(token, "L3"))        { copy_str(out, cap, "L3"); return; }
     if (token_eq(token, "R3"))        { copy_str(out, cap, "R3"); return; }
+    if (token_eq(token, "RsUp"))      { copy_str(out, cap, "R.S. Up"); return; }
+    if (token_eq(token, "RsDown"))    { copy_str(out, cap, "R.S. Down"); return; }
+    if (token_eq(token, "RsLeft"))    { copy_str(out, cap, "R.S. Left"); return; }
+    if (token_eq(token, "RsRight"))   { copy_str(out, cap, "R.S. Right"); return; }
     copy_str(out, cap, token);
 }
 
@@ -614,12 +666,23 @@ static const char* snes_gamepad_token_for_capture(int kind, int code, int axis_d
         if (code == (int)SDL_CONTROLLER_AXIS_TRIGGERRIGHT) return "R2";
 #endif
     }
+    /* The right stick: the runtime reads each direction as a button. */
+    if (kind == LNG_PADBIND_AXIS) {
+#if defined(LNG_SDL3)
+        if (code == (int)SDL_GAMEPAD_AXIS_RIGHTX) return axis_dir < 0 ? "RsLeft" : "RsRight";
+        if (code == (int)SDL_GAMEPAD_AXIS_RIGHTY) return axis_dir < 0 ? "RsUp" : "RsDown";
+#else
+        if (code == (int)SDL_CONTROLLER_AXIS_RIGHTX) return axis_dir < 0 ? "RsLeft" : "RsRight";
+        if (code == (int)SDL_CONTROLLER_AXIS_RIGHTY) return axis_dir < 0 ? "RsUp" : "RsDown";
+#endif
+    }
     return NULL;
 }
 
 static int snes_gamepad_set_button(LauncherModel* m, int player, int b,
                                    int kind, int code, int axis_dir) {
-    if (!m || player < 0 || player > 1 || b < 0 || b >= LNG_SNES_PAD_BUTTON_COUNT)
+    if (!m || player < 0 || player > 1 || b < 0 ||
+        b >= LNG_SNES_PAD_BUTTON_COUNT + LNG_SNES_EXT_COUNT)
         return 0;
     /* An empty token IS the store's unbound value (snes_gamepad_label draws
      * it as "(unbound)"), so a clear writes one rather than being refused. */
@@ -627,6 +690,16 @@ static int snes_gamepad_set_button(LauncherModel* m, int player, int b,
                             ? ""
                             : snes_gamepad_token_for_capture(kind, code, axis_dir);
     if (!token) return 0;
+
+    if (b >= LNG_SNES_PAD_BUTTON_COUNT) {
+        char ext[LNG_SNES_EXT_COUNT][48];
+        snes_gamepad_read_ext(player, ext);
+        copy_str(ext[b - LNG_SNES_PAD_BUTTON_COUNT], sizeof(ext[0]), token);
+        snes_gamepad_write_line(snes_gamepad_ext_key(player), LNG_SNES_EXT_COUNT, ext);
+        snes_gamepad_label(token, m->pad_binds[player][b],
+                           sizeof(m->pad_binds[player][b]));
+        return 1;
+    }
 
     char controls[LNG_SNES_PAD_BUTTON_COUNT][48];
     snes_gamepad_read_config_order(player, controls);
@@ -788,6 +861,18 @@ void launcher_binds_save_snes_gamepad(LauncherModel* m, int player) {
         strncat(value, controls[i], sizeof(value) - strlen(value) - 1);
     }
     launcher_ini_kv_write(config_path(), sect, "Controls", value);
+    if (m->profile &&
+        ((const SystemProfile*)m->profile)->controller.button_count ==
+            LNG_SNES_MODERN_PAD_BUTTON_COUNT) {
+        char ext[LNG_SNES_EXT_COUNT][48];
+        value[0] = 0;
+        snes_gamepad_read_ext(player - 1, ext);
+        for (int i = 0; i < LNG_SNES_EXT_COUNT; ++i) {
+            if (i) strncat(value, ", ", sizeof(value) - strlen(value) - 1);
+            strncat(value, ext[i], sizeof(value) - strlen(value) - 1);
+        }
+        launcher_ini_kv_write(config_path(), sect, "ControlsExt", value);
+    }
 
     dz = m->s.deadzone[player - 1];
     if (dz < 0) dz = 0;
@@ -828,6 +913,7 @@ void launcher_binds_delete_snes_gamepad(LauncherModel* m, int player) {
      * profile" everywhere it is consulted. Leaving a stale mapping behind
      * would be the one outcome a Delete must not produce. */
     launcher_ini_kv_write(config_path(), sect, "Controls", "");
+    launcher_ini_kv_write(config_path(), sect, "ControlsExt", "");
     launcher_ini_kv_write(config_path(), sect, "Name", "");
     launcher_ini_kv_write(config_path(), sect, "NameCustom", "0");
     launcher_ini_kv_write(config_path(), sect, "Deadzone", "");
@@ -851,6 +937,11 @@ void launcher_binds_apply_snes_pad_profile(LauncherModel* m, int player) {
         launcher_ini_kv_write(config_path(), "GamepadMap",
                               snes_gamepad_config_key(player - 1), stored);
     }
+    if (snes_profile_get(guid, "ControlsExt", stored, sizeof(stored)) &&
+        stored[0]) {
+        launcher_ini_kv_write(config_path(), "GamepadMap",
+                              snes_gamepad_ext_key(player - 1), stored);
+    }
     if (snes_profile_get(guid, "Deadzone", dzs, sizeof(dzs)) && dzs[0]) {
         int dz = atoi(dzs);
         if (dz < 0) dz = 0;
@@ -869,11 +960,18 @@ void launcher_binds_apply_snes_pad_profile(LauncherModel* m, int player) {
     reload_player_display(m, player);
 }
 
-static void snes_gamepad_reset_player(int player) {
+static void snes_gamepad_reset_player(int player, int modern) {
     char controls[LNG_SNES_PAD_BUTTON_COUNT][48];
     for (int i = 0; i < LNG_SNES_PAD_BUTTON_COUNT; ++i)
         copy_str(controls[i], sizeof(controls[i]), kSnesGamepadDefaultControls[i]);
     snes_gamepad_write_config_order(player, controls);
+    /* A classic SNES build's config.ini gains no extras line. */
+    if (modern) {
+        char ext[LNG_SNES_EXT_COUNT][48];
+        for (int i = 0; i < LNG_SNES_EXT_COUNT; ++i)
+            copy_str(ext[i], sizeof(ext[i]), kSnesGamepadDefaultExt[i]);
+        snes_gamepad_write_line(snes_gamepad_ext_key(player), LNG_SNES_EXT_COUNT, ext);
+    }
 }
 
 // Format SDL keycode + mods the way config.c's ParseKeyArray reads back.
@@ -1497,7 +1595,9 @@ void launcher_binds_reset_player(LauncherModel* m, int player) {
     if (is_snes_profile(m)) {
         recompui_keybinds_reset_player(player);
         recompui_keybinds_save();
-        snes_gamepad_reset_player(player - 1);
+        snes_gamepad_reset_player(player - 1,
+            ((const SystemProfile*)m->profile)->controller.button_count ==
+                LNG_SNES_MODERN_PAD_BUTTON_COUNT);
         reload_player_display(m, player);
         return;
     }

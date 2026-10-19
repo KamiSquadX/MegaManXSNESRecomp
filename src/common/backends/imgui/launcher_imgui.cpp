@@ -6323,10 +6323,20 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
         // actually uses (e.g. PSX's "Triangle") instead of a constant tuned
         // for SNES's shorter names ("Select") — otherwise longer per-system
         // vocab overlaps the bind-chip button next to it.
-        float label_col_w = px(70.0f);
-        for (int b = 0; b < nbtn; ++b) {
+        //
+        // Rows beside the buttons (spec.pad_bind_side) size their own label
+        // column: they are not grid cells, and a long side label ("R.S.
+        // Right") must not widen every column of the grid.
+        float label_col_w = px(70.0f), side_label_w = px(70.0f);
+        const int side_first = (spec.pad_bind_order && spec.pad_bind_side > 0)
+            ? spec.pad_bind_rows * spec.pad_bind_cols : nbtn;
+        for (int i = 0; i < nbtn; ++i) {
+            const int b = (spec.pad_bind_order && i < spec.pad_bind_rows *
+                           spec.pad_bind_cols + spec.pad_bind_side)
+                ? spec.pad_bind_order[i] : i;
             float w = ImGui::CalcTextSize(spec.buttons[b].label).x + px(20.0f);
-            if (w > label_col_w) label_col_w = w;
+            float* col_w = i >= side_first ? &side_label_w : &label_col_w;
+            if (w > *col_w) *col_w = w;
         }
         // Two chips per row when either the N64 keeps two binds per input
         // (bpi>=2) OR a pad-bind console pairs a KEY + GAMEPAD chip (has_pad);
@@ -6345,9 +6355,9 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
         // N64 (bpi >= 2) is untouched: its two chips are primary and ALTERNATE
         // binds for the same input, and both are live.
         const bool two_chip = (bpi >= 2);
-        const float chip_w   = two_chip ? px(118.0f) : px(160.0f);
+        float chip_w   = two_chip ? px(118.0f) : px(160.0f);
         const float chip_gap = px(6.0f);
-        const float cell_w = two_chip
+        float cell_w = two_chip
             ? (label_col_w + chip_w + chip_gap + chip_w + px(16.0f))
             : (label_col_w + chip_w + px(16.0f));
 
@@ -6357,39 +6367,43 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
         const int* const order = spec.pad_bind_order;
         const int order_rows = order ? spec.pad_bind_rows : 0;
         const int order_cols = order ? spec.pad_bind_cols : 0;
+        // Rows that follow the grid, stacked under its last column beside
+        // Auto Map / Reset to Defaults (spec.pad_bind_side).
+        const int order_side = order ? spec.pad_bind_side : 0;
         // Only when the declared grid matches the buttons actually shown: a pad
         // MODE can reduce the active count, and an order naming a hidden button
         // would put a control on screen for an input this mode does not have.
         const bool vertical = order && order_rows > 0 && order_cols > 0 &&
-                              order_rows * order_cols == nbtn;
+                              order_rows * order_cols + order_side == nbtn;
+        const int side_count = vertical ? order_side : 0;
 
         int cols;
         if (vertical) {
             cols = order_cols;
+            // A declared grid keeps its column count, so a window too narrow
+            // for it narrows the chips instead of clipping the last column
+            // (the modern SNES pad's fourth column needs this below ~1500px).
+            const float avail = ImGui::GetContentRegionAvail().x;
+            const float pad = ImGui::GetStyle().CellPadding.x * 2.0f;
+            if (!two_chip && cols * (cell_w + pad) > avail) {
+                float fit = avail / cols - pad - label_col_w - px(16.0f);
+                if (fit < px(80.0f)) fit = px(80.0f);
+                if (fit < chip_w) {
+                    chip_w = fit;
+                    cell_w = label_col_w + chip_w + px(16.0f);
+                }
+            }
         } else {
             cols = (int)(ImGui::GetContentRegionAvail().x / cell_w);
             if (cols < 1) cols = 1;
             if (cols > 4) cols = 4;
         }
-        // Fixed-width columns, explicitly sized to cell_w: the default
-        // stretch policy divides available width evenly across `cols`
-        // regardless of our computed cell_w, which reintroduces the very
-        // overlap/clip this sizing pass exists to avoid.
-        if (ImGui::BeginTable("binds", cols, ImGuiTableFlags_SizingFixedFit)) {
-            for (int c = 0; c < cols; ++c)
-                ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthFixed, cell_w);
-            const int cell_count = vertical ? (order_rows * order_cols) : nbtn;
-            for (int cell = 0; cell < cell_count; ++cell) {
-                // Column-major: walk down column 0, then column 1, then 2. The
-                // table itself is filled left-to-right, so the index is
-                // transposed here rather than the table being reshaped.
-                const int b = vertical
-                    ? order[(cell % order_cols) * order_rows + (cell / order_cols)]
-                    : cell;
-                ImGui::TableNextColumn();
+        // One input's label and chip(s). The grid draws its cells with it, and
+        // the side rows beside Auto Map / Reset to Defaults reuse it.
+        auto draw_bind_cell = [&](int b, float row_label_w) {
                 ImGui::PushID(b);
                 bind_row_label(spec.buttons[b].label, col(th.text_muted),
-                               label_col_w, chip_gap);
+                               row_label_w, chip_gap);
                 if (bpi >= 2) {
                     // Two chips per input: slot 0 primary, slot 1 alternate,
                     // both keyboard binds in the console's own store. No
@@ -6443,10 +6457,33 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
                     if (cap_key) ImGui::PopStyleColor();
                 }
                 ImGui::PopID();
+        };
+        // Screen x of the grid's last column: the side rows line up under it.
+        float last_col_x = ImGui::GetCursorScreenPos().x;
+        // Fixed-width columns, explicitly sized to cell_w: the default
+        // stretch policy divides available width evenly across `cols`
+        // regardless of our computed cell_w, which reintroduces the very
+        // overlap/clip this sizing pass exists to avoid.
+        if (ImGui::BeginTable("binds", cols, ImGuiTableFlags_SizingFixedFit)) {
+            for (int c = 0; c < cols; ++c)
+                ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthFixed, cell_w);
+            const int cell_count = vertical ? (order_rows * order_cols) : nbtn;
+            for (int cell = 0; cell < cell_count; ++cell) {
+                // Column-major: walk down column 0, then column 1, then 2. The
+                // table itself is filled left-to-right, so the index is
+                // transposed here rather than the table being reshaped.
+                const int b = vertical
+                    ? order[(cell % order_cols) * order_rows + (cell / order_cols)]
+                    : cell;
+                ImGui::TableNextColumn();
+                if (cell % cols == cols - 1)
+                    last_col_x = ImGui::GetCursorScreenPos().x;
+                draw_bind_cell(b, label_col_w);
             }
             ImGui::EndTable();
         }
         ImGui::Spacing();
+        const ImVec2 below_grid = ImGui::GetCursorScreenPos();
 
         /* ---- Auto Map All -------------------------------------------------
          *
@@ -6460,7 +6497,8 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
          * mid-sequence. */
         const bool automap_running =
             s_automap_i >= 0 && s_automap_player == p;
-        const int automap_total = vertical ? (order_rows * order_cols) : nbtn;
+        const int automap_total =
+            vertical ? (order_rows * order_cols + side_count) : nbtn;
 
         if (automap_running) {
             /* Esc abandons the whole run, not just the current capture. Checked
@@ -6543,6 +6581,23 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
             }
         } else if (m->capturing) {
             ImGui::TextColored(col(th.warn), "Listening... (Esc cancels, Backspace unbinds)");
+        }
+        if (side_count > 0) {
+            /* The rows that follow the grid (a modern pad's right stick), one
+             * under another in the grid's last column, level with Auto Map. */
+            const ImVec2 after_buttons = ImGui::GetCursorScreenPos();
+            /* Their chips line up under the last column's chips; a longer
+             * label ("R.S. Down") reaches back into the empty space beside. */
+            ImGui::SetCursorScreenPos(ImVec2(
+                last_col_x + label_col_w - side_label_w, below_grid.y));
+            ImGui::BeginGroup();
+            for (int i = 0; i < side_count; ++i)
+                draw_bind_cell(order[order_rows * order_cols + i], side_label_w);
+            ImGui::EndGroup();
+            const float bottom = ImGui::GetCursorScreenPos().y;
+            ImGui::SetCursorScreenPos(ImVec2(after_buttons.x,
+                bottom > after_buttons.y ? bottom : after_buttons.y));
+            ImGui::Dummy(ImVec2(0, 0));
         }
         } // !is_psx
     } end_panel();

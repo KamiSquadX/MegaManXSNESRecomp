@@ -2376,6 +2376,14 @@ typedef struct RecompLauncherCGameInfo {
     const char* const* texture_filter_labels;
     const int*         texture_filter_values;
     int                num_texture_filters;
+
+    /* SNES only: the title reads a modern pad's extra controls (L2, R2, L3,
+     * R3 and the right stick's four directions) beside the SNES twelve. The
+     * controller page then offers those eight rows too, persisted as
+     * keybinds.ini l2..r3 / rs_up..rs_right and config.ini [GamepadMap]
+     * ControlsExt / ControlsExtP2. 0 keeps the twelve-button page. Appended
+     * for ABI stability. */
+    int snes_modern_pad;
 } RecompLauncherCGameInfo;
 
 /* RecompLauncherCGameInfo carries texture_filter_labels / _values. */

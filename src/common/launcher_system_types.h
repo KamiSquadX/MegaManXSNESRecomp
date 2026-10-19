@@ -80,6 +80,12 @@ typedef struct {
     // this 0 (the zero-fill of every older positional initializer, so adding
     // this changed no existing console). See launcher_model_pak_ports().
     int  has_pak;
+    // ---- rows beside the panel's buttons -----------------------------------
+    // The last pad_bind_side entries of pad_bind_order are not grid cells:
+    // they stack under the grid's last column, beside Auto Map / Reset to
+    // Defaults (SNES modern pad: the right stick's four directions). 0 (the
+    // zero-fill of every older positional initializer) means none.
+    int  pad_bind_side;
 } ControllerSpec;
 
 // ---- Save module --------------------------------------------------------------

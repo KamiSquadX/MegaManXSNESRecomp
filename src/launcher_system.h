@@ -91,7 +91,9 @@ static inline const SystemProfile* launcher_system_by_id(const char* name) {
 static inline const SystemProfile* launcher_system_infer(const RecompLauncherCGameInfo* gi) {
     if (gi && gi->platform && gi->platform[0]) {
         if (lps_streq_ci(gi->platform, "PLAYSTATION"))       return &kSystemProfilePsx;
-        if (lps_streq_ci(gi->platform, "SUPER NINTENDO"))    return &kSystemProfileSnes;
+        if (lps_streq_ci(gi->platform, "SUPER NINTENDO"))
+            return gi->snes_modern_pad ? &kSystemProfileSnesModern
+                                       : &kSystemProfileSnes;
         if (lps_streq_ci(gi->platform, "NINTENDO 64"))       return &kSystemProfileN64;
         // Both spellings: launcher_profile_apply_genesis sets "SEGA GENESIS";
         // "GENESIS" was the pre-buildout stub label (kept for host compat).

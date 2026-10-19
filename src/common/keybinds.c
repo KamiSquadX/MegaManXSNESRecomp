@@ -41,7 +41,11 @@
         .l2     = SDL_SCANCODE_Q, \
         .r2     = SDL_SCANCODE_E, \
         .l3     = SDL_SCANCODE_UNKNOWN, \
-        .r3     = SDL_SCANCODE_UNKNOWN, \
+        .r3     = SDL_SCANCODE_KP_5, \
+        .rs_up    = SDL_SCANCODE_KP_8, \
+        .rs_down  = SDL_SCANCODE_KP_2, \
+        .rs_left  = SDL_SCANCODE_KP_4, \
+        .rs_right = SDL_SCANCODE_KP_6, \
     }, \
     /* Player 2 gets the SAME defaults as player 1.
      *
@@ -70,7 +74,11 @@
         .l2     = SDL_SCANCODE_Q, \
         .r2     = SDL_SCANCODE_E, \
         .l3     = SDL_SCANCODE_UNKNOWN, \
-        .r3     = SDL_SCANCODE_UNKNOWN, \
+        .r3     = SDL_SCANCODE_KP_5, \
+        .rs_up    = SDL_SCANCODE_KP_8, \
+        .rs_down  = SDL_SCANCODE_KP_2, \
+        .rs_left  = SDL_SCANCODE_KP_4, \
+        .rs_right = SDL_SCANCODE_KP_6, \
     }, \
 }
 
@@ -99,6 +107,10 @@ static const ButtonDef s_buttons[] = {
     { "r2",     offsetof(PlayerBinds, r2)     },
     { "l3",     offsetof(PlayerBinds, l3)     },
     { "r3",     offsetof(PlayerBinds, r3)     },
+    { "rs_up",    offsetof(PlayerBinds, rs_up)    },
+    { "rs_down",  offsetof(PlayerBinds, rs_down)  },
+    { "rs_left",  offsetof(PlayerBinds, rs_left)  },
+    { "rs_right", offsetof(PlayerBinds, rs_right) },
     { NULL, 0 }
 };
 
@@ -168,7 +180,7 @@ static void write_player_section(FILE *f, const char *section, const PlayerBinds
     fprintf(f, "[%s]\n", section);
     for (const ButtonDef *bd = s_buttons; bd->name; bd++) {
         SDL_Scancode sc = *(const SDL_Scancode *)((const char *)pb + bd->offset);
-        fprintf(f, "%-7s = %s\n", bd->name, scancode_to_name(sc));
+        fprintf(f, "%-8s = %s\n", bd->name, scancode_to_name(sc));
     }
     fprintf(f, "\n");
 }

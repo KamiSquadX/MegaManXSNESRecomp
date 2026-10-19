@@ -46,6 +46,8 @@ typedef struct {
     SDL_Scancode start, select;
     SDL_Scancode up, down, left, right;
     SDL_Scancode l2, r2, l3, r3;   // deeper (PSX-style) shoulder/stick-click slots
+    // A modern pad's right stick as four buttons (SNES modern pad).
+    SDL_Scancode rs_up, rs_down, rs_left, rs_right;
 } PlayerBinds;
 
 typedef struct {
@@ -66,7 +68,8 @@ uint16_t recompui_keybinds_read_player(const uint8_t *keys, int player);
 
 /* ── Rebind API (used by the launcher's Configure view) ──────────────────
  * Buttons are indexed 0..recompui_keybinds_button_count()-1 in the fixed order
- * a, b, x, y, l, r, start, select, up, down, left, right, l2, r2, l3, r3 —
+ * a, b, x, y, l, r, start, select, up, down, left, right, l2, r2, l3, r3,
+ * rs_up, rs_down, rs_left, rs_right —
  * the same order keybinds.ini writes them (the first 12 unchanged from
  * before the l2/r2/l3/r3 slots existed). Scancodes, NOT keycodes
  * (keybinds.ini stores SDL scancode names; config.ini's [KeyMap] hotkeys use
