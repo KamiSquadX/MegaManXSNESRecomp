@@ -145,12 +145,13 @@ static bool zero_weapons_menu(void) {
         word(frame.ram,0x1990) == 160 && (frame.ram[0x199e] == 0 || frame.ram[0x199e] == 0x18)));
 }
 static bool zero_title_menu(void) {
-  /* Retail title-menu cursor is the player object, at one of three rows.
+  /* Retail title-menu cursor is the player object beside one of the rows:
+   * X1's three at 166.., or five from 150 when BOSS RUSH is offered.
    * Its native idle/firing animation and selection beam remain active. */
   unsigned y = word(frame.ram,0xbb0);
   return MmxZeroEnabled() && !frame_zero.active_x && frame.ram[0xd1] == 0 && frame.ram[0xba9] == 2 &&
       frame.ram[0xbbe] == 0 && word(frame.ram,0xbad) == 32 &&
-      y >= 166 && y <= 214;
+      y >= 150 && y <= 214;
 }
 /* X1's buster charge cycles palette 1 in CGRAM itself while its sparkle
  * objects (class 1, $0C98..$0E17, $82:82ED) are live. The co-op weapon
@@ -2004,6 +2005,10 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       MmxRenderAssetsDeathPaletteFade(frame.ram, frame.lines[0].palette) : 0;
   const Piece *pieces = frame.expand && g_mmx_render_asset_repairs ? frame.expanded : frame.pieces;
   unsigned piece_count = frame.expand && g_mmx_render_asset_repairs ? frame.expanded_count : frame.piece_count;
+  /* X1's options screen draws no sprites. A Zero build keeps the previous
+   * frame's character while a frame builds none, which would carry the
+   * title's cursor onto this page. */
+  if (options_screen) piece_count = 0;
   const uint8_t *zero = stage || zero_menu || zero_title ? MmxZeroPose(frame.ram, &frame_zero) : NULL;
   const uint8_t *blade = stage && zero ? MmxZeroBlade(&frame_zero) : NULL;
   const uint8_t *charge = stage && zero ? MmxZeroChargePose(&frame_zero) : NULL;

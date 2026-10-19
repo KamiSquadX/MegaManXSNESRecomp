@@ -13,7 +13,7 @@ Beside the SNES twelve, each player's **Input bindings** now include:
 | R2 | E | Right trigger |
 | L3 | (unbound) | Left stick click |
 | R3 | Keypad 5 | Right stick click |
-| R.S. Up / Down / Left / Right | Keypad 8 / 2 / 4 / 6 | Right stick |
+| R-Stick Up / Down / Left / Right | Keypad 8 / 2 / 4 / 6 | Right stick |
 
 L2, R2, L3 and R3 form a fourth column; the right stick's four rows sit below
 it, beside **Auto Map All** and **Reset to Defaults**. Each row is mapped with
