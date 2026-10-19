@@ -137,6 +137,8 @@ typedef struct GamepadInfo {
   uint8 axis_buttons;
   uint16 last_cmd[kGamepadBtn_Count];
   Sint16 last_axis_x, last_axis_y;
+  Sint16 last_raxis_x, last_raxis_y;
+  uint8 rstick_buttons;        /* kGamepadBtn_RsUp.. held, bit 0 = up */
 } GamepadInfo;
 
 #if SNESRECOMP_SDL3
@@ -163,6 +165,7 @@ static void HandleGamepadInput(GamepadInfo *gi, int button, bool pressed);
 static void HandleInput(int keyCode, int keyMod, bool pressed);
 static void HandleCommand(uint32 j, bool pressed);
 static void PollKeyboardControls(const uint8_t *keys);
+static uint16 MapSeatInput(int seat, uint16 snes);
 static void RequestScreenshot(void);
 #ifndef __ANDROID__
 void OpenGLRenderer_Create(struct RendererFuncs *funcs);
@@ -262,6 +265,11 @@ static uint32 g_pad_buttons;
 static uint16 g_seat_keys[kSnesHostPadSeats];
 static uint16 g_seat_keymap[kSnesHostPadSeats];
 static uint16 g_seat_pad[kSnesHostPadSeats];
+/* Extended controls (SNES_EXT_*) per seat, by source: keybinds.ini, a
+ * [KeyMap] ControlsExt* binding, and the [GamepadMap] ControlsExt* line. */
+static uint8 g_seat_key_ext[kSnesHostPadSeats];
+static uint8 g_seat_keymap_ext[kSnesHostPadSeats];
+static uint8 g_seat_pad_ext[kSnesHostPadSeats];
 static int g_ppu_render_flags = 0;
 static int g_snes_width = 256, g_snes_height = 224;
 static double g_present_alpha = 1;
@@ -1061,8 +1069,9 @@ static void PushExtraSeats(void) {
   if (g_netplay_session) return;
   const int seats = HostPadSeats();
   for (int seat = 2; seat < seats; ++seat)
-    RtlSetPadState(seat, (uint16)(g_seat_keys[seat] | g_seat_keymap[seat] |
-                                  g_seat_pad[seat] | g_gamepad[seat].axis_buttons));
+    RtlSetPadState(seat, MapSeatInput(seat,
+        (uint16)(g_seat_keys[seat] | g_seat_keymap[seat] |
+                 g_seat_pad[seat] | g_gamepad[seat].axis_buttons)));
 }
 
 void ChangeWindowScale(int scale_step) {
@@ -2501,9 +2510,13 @@ static uint16_t netplay_capture_pad(void *ctx) {
   (void)ctx;
   PollKeyboardControls(snesrecomp_sdl_get_keyboard_state());
   const unsigned player = snes_netplay_input_player() == 1 ? 1 : 0;
-  return (uint16_t)snes_savestate_menu_filter_guest_input(
-      (((g_input_state | g_pad_buttons) >> (player * 12)) |
-       g_gamepad[player].axis_buttons) & 0x0fffu);
+  /* Through the title's key config before it is sent: every peer then runs
+   * the same mapped controls whatever its own config says. */
+  uint16 word = MapSeatInput((int)player,
+      (uint16)((((g_input_state | g_pad_buttons) >> (player * 12)) |
+                g_gamepad[player].axis_buttons) & 0x0fffu));
+  snes_netplay_stage_local_ext(RtlGetPadExt((int)player));
+  return (uint16_t)snes_savestate_menu_filter_guest_input(word);
 }
 
 static void netplay_poll_events(void *ctx, int *want_soft_exit) {
@@ -4077,6 +4090,10 @@ error_reading:;
     uint32 human = OverlayFilterGuestInput(
         snes_savestate_menu_filter_guest_input(OverlayNavInputs()));
     uint32 inputs = human | (g_gamepad[1].axis_buttons << 12);
+    /* The title's key config sees the players' controls, never the script
+     * or debug-server words OR'd in below. */
+    inputs = MapSeatInput(0, (uint16)(inputs & 0x0fff)) |
+             ((uint32)MapSeatInput(1, (uint16)((inputs >> 12) & 0x0fff)) << 12);
 
     /* Overlay self-test (SNESRECOMP_OVERLAY_SELFTEST=<frame>, off by default).
      * The overlays can only be driven by a human, so nothing automated ever
@@ -4412,6 +4429,29 @@ static void PollKeyboardControls(const uint8_t *keys) {
   for (int seat = 2; seat < kSnesHostPadSeats; ++seat)
     g_seat_keys[seat] = g_config.player_src[seat] == 1
         ? keybinds_read_player_runner(keys, seat + 1) : 0;
+  for (int seat = 0; seat < kSnesHostPadSeats; ++seat)
+    g_seat_key_ext[seat] = g_config.player_src[seat] == 1
+        ? keybinds_read_player_ext(keys, seat + 1) : 0;
+}
+
+/* One seat's extended controls from every source. */
+static uint8 HostSeatExt(int seat) {
+  return (uint8)(g_seat_key_ext[seat] | g_seat_keymap_ext[seat] |
+                 g_seat_pad_ext[seat]);
+}
+
+/* A local seat's word and extended controls through the title's key config
+ * (SnesDesktopHostGame.map_seat_input). Returns the 12-bit guest word and
+ * publishes the extended half for the frame with RtlSetPadExt. */
+static uint16 MapSeatInput(int seat, uint16 snes) {
+  uint8 ext = HostSeatExt(seat);
+  snes &= 0x0fff;
+  if (g_game && g_game->map_seat_input) {
+    g_game->map_seat_input(seat, &snes, &ext);
+    snes &= 0x0fff;
+  }
+  RtlSetPadExt(seat, ext);
+  return snes;
 }
 
 static void HandleCommand(uint32 j, bool pressed) {
@@ -4437,6 +4477,15 @@ static void HandleCommand(uint32 j, bool pressed) {
       uint16 m = (uint16)(1u << kKbdRemap[(j - kKeys_ControlsP3) % 12]);
       g_seat_keymap[seat] = pressed ? (uint16)(g_seat_keymap[seat] | m)
                                     : (uint16)(g_seat_keymap[seat] & ~m);
+      return;
+    }
+  }
+  {
+    const int seat = ConfigSeatForExtControl((int)j);
+    if (seat >= 0) {
+      uint8 m = (uint8)(1u << ((j - kKeys_ControlsExt) % 8));
+      g_seat_keymap_ext[seat] = pressed ? (uint8)(g_seat_keymap_ext[seat] | m)
+                                        : (uint8)(g_seat_keymap_ext[seat] & ~m);
       return;
     }
   }
@@ -4677,6 +4726,15 @@ static void SetPadButtonOrFallthrough(uint32 j, bool pressed) {
       return;
     }
   }
+  {
+    const int seat = ConfigSeatForExtControl((int)j);
+    if (seat >= 0) {
+      uint8 m = (uint8)(1u << ((j - kKeys_ControlsExt) % 8));
+      g_seat_pad_ext[seat] = pressed ? (uint8)(g_seat_pad_ext[seat] | m)
+                                     : (uint8)(g_seat_pad_ext[seat] & ~m);
+      return;
+    }
+  }
   if (g_overlay_modal)
     return;   /* a panel owns the screen: no state loads behind it */
   HandleCommand(j, pressed);
@@ -4731,7 +4789,31 @@ static float ApproximateAtan2(float y, float x) {
   return q + *(float *)&uatan_2q;
 }
 
+/* Eight 45-degree segments rotated by 22.5 degrees, as d-pad bits: bit 0 up,
+ * 1 down, 2 left, 3 right. 0 inside the deadzone. */
+static uint8 StickDirections(Sint16 x, Sint16 y) {
+  static const uint8 kSegmentToDirs[8] = {
+    1, 1 | 8, 8, 8 | 2, 2, 2 | 4, 4, 4 | 1,
+  };
+  if ((int)x * x + (int)y * y < g_config.gamepad_deadzone * g_config.gamepad_deadzone)
+    return 0;
+  uint8 angle = (uint8)(int)(ApproximateAtan2(y, x) * 64.0f + 0.5f);
+  return kSegmentToDirs[(uint8)(angle + 16 + 64) >> 5];
+}
+
 static void HandleGamepadAxisInput(GamepadInfo *gi, int axis, Sint16 value) {
+  if (axis == SDL_CONTROLLER_AXIS_RIGHTX || axis == SDL_CONTROLLER_AXIS_RIGHTY) {
+    /* The right stick is four buttons ([GamepadMap] RsUp..RsRight), so it
+     * binds like any other control rather than steering the d-pad. */
+    *(axis == SDL_CONTROLLER_AXIS_RIGHTX ? &gi->last_raxis_x : &gi->last_raxis_y) = value;
+    uint8 dirs = StickDirections(gi->last_raxis_x, gi->last_raxis_y);
+    uint8 changed = (uint8)(dirs ^ gi->rstick_buttons);
+    gi->rstick_buttons = dirs;
+    for (int i = 0; i < 4; ++i)
+      if (changed & (1u << i))
+        HandleGamepadInput(gi, kGamepadBtn_RsUp + i, (dirs >> i) & 1);
+    return;
+  }
   if (axis == SDL_CONTROLLER_AXIS_LEFTX || axis == SDL_CONTROLLER_AXIS_LEFTY) {
     *(axis == SDL_CONTROLLER_AXIS_LEFTX ? &gi->last_axis_x : &gi->last_axis_y) = value;
     int buttons = 0;
@@ -4857,7 +4939,12 @@ static const char kDefaultConfigIniContent[] =
   "#   Up, Down, Left, Right, Select, Start, A, B, X, Y, L, R\n"
   "# Edit + restart to rebind. Shoulder = L1/Lb (top), trigger = L2.\n"
   "Controls =   DpadUp, DpadDown, DpadLeft, DpadRight, Back, Start, B, A, Y, X, Lb, Rb\n"
-  "ControlsP2 = DpadUp, DpadDown, DpadLeft, DpadRight, Back, Start, B, A, Y, X, Lb, Rb\n";
+  "ControlsP2 = DpadUp, DpadDown, DpadLeft, DpadRight, Back, Start, B, A, Y, X, Lb, Rb\n"
+  "\n"
+  "# A modern pad's extra controls, in this order:\n"
+  "#   L2, R2, L3, R3, R.S. Up, R.S. Down, R.S. Left, R.S. Right\n"
+  "ControlsExt =   L2, R2, L3, R3, RsUp, RsDown, RsLeft, RsRight\n"
+  "ControlsExtP2 = L2, R2, L3, R3, RsUp, RsDown, RsLeft, RsRight\n";
 
 static const char *DefaultConfigIni(void) {
   if (g_game->default_config_ini) return g_game->default_config_ini;

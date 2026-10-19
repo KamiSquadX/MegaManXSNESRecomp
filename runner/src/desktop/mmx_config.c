@@ -108,6 +108,8 @@ static const KeyNameId kKeyNameId[] = {
   {"Null", kKeys_Null, 65535},
   M(Controls), M(ControlsP2),
   M(ControlsP3), M(ControlsP4), M(ControlsP5), M(ControlsP6), M(ControlsP7), M(ControlsP8),
+  M(ControlsExt), M(ControlsExtP2), M(ControlsExtP3), M(ControlsExtP4),
+  M(ControlsExtP5), M(ControlsExtP6), M(ControlsExtP7), M(ControlsExtP8),
   M(Load), M(Save),
   S(Fullscreen), S(Reset),
   S(Pause), S(PauseDimmed), S(Turbo), S(WindowBigger), S(WindowSmaller), S(VolumeUp), S(VolumeDown), S(DisplayPerf), S(ToggleRenderer), S(ToggleWidescreen),
@@ -245,6 +247,7 @@ static uint16 joymap_first[kGamepadBtn_Count * kSnesHostPadSeats];  // one block
 static GamepadMapEnt *joymap_ents;
 static int joymap_size;
 static uint8 has_assigned_joypad_controls;   /* bit per seat */
+static uint8 has_assigned_joypad_ext;        /* bit per seat: ControlsExt* */
 
 
 static int CountBits32(uint32 n) {
@@ -296,11 +299,13 @@ static int ParseGamepadButtonName(const char **value) {
   static const char *const kGamepadKeyNames[] = {
     "Back", "Guide", "Start", "L3", "R3",
     "L1", "R1", "DpadUp", "DpadDown", "DpadLeft", "DpadRight", "L2", "R2",
+    "RsUp", "RsDown", "RsLeft", "RsRight",
     "Lb", "Rb", "A", "B", "X", "Y"
   };
   static const uint8 kGamepadKeyIds[] = {
     kGamepadBtn_Back, kGamepadBtn_Guide, kGamepadBtn_Start, kGamepadBtn_L3, kGamepadBtn_R3,
     kGamepadBtn_L1, kGamepadBtn_R1, kGamepadBtn_DpadUp, kGamepadBtn_DpadDown, kGamepadBtn_DpadLeft, kGamepadBtn_DpadRight, kGamepadBtn_L2, kGamepadBtn_R2,
+    kGamepadBtn_RsUp, kGamepadBtn_RsDown, kGamepadBtn_RsLeft, kGamepadBtn_RsRight,
     kGamepadBtn_L1, kGamepadBtn_R1, kGamepadBtn_A, kGamepadBtn_B, kGamepadBtn_X, kGamepadBtn_Y,
   };
   for (size_t i = 0; i != countof(kGamepadKeyNames); i++) {
@@ -318,13 +323,23 @@ static const uint8 kDefaultGamepadCmds[] = {
   kGamepadBtn_B, kGamepadBtn_A, kGamepadBtn_Y, kGamepadBtn_X, kGamepadBtn_L1, kGamepadBtn_R1,
 };
 
+/* SNES_EXT_* order: each extended control on the pad control of its name. */
+static const uint8 kDefaultGamepadExtCmds[] = {
+  kGamepadBtn_L2, kGamepadBtn_R2, kGamepadBtn_L3, kGamepadBtn_R3,
+  kGamepadBtn_RsUp, kGamepadBtn_RsDown, kGamepadBtn_RsLeft, kGamepadBtn_RsRight,
+};
+
 /* Default [GamepadMap] bindings for every seat whose ControlsPn line is absent. */
 static void AddDefaultGamepadControls(void) {
   for (int seat = 0; seat < s_pad_seats; ++seat) {
-    if (has_assigned_joypad_controls & (1u << seat)) continue;
-    for (int i = 0; i < (int)countof(kDefaultGamepadCmds); i++)
-      GamepadMap_Add(kDefaultGamepadCmds[i] + seat * kGamepadBtn_Count, 0,
-                     ConfigSeatControlsBase(seat) + i);
+    if (!(has_assigned_joypad_controls & (1u << seat)))
+      for (int i = 0; i < (int)countof(kDefaultGamepadCmds); i++)
+        GamepadMap_Add(kDefaultGamepadCmds[i] + seat * kGamepadBtn_Count, 0,
+                       ConfigSeatControlsBase(seat) + i);
+    if (!(has_assigned_joypad_ext & (1u << seat)))
+      for (int i = 0; i < (int)countof(kDefaultGamepadExtCmds); i++)
+        GamepadMap_Add(kDefaultGamepadExtCmds[i] + seat * kGamepadBtn_Count, 0,
+                       ConfigSeatExtBase(seat) + i);
   }
 }
 
@@ -469,6 +484,11 @@ static bool HandleIniConfig(int section, const char *key, char *value) {
           int id = kKeyNameId[i].id;
           int seat = ConfigSeatForControl(id);
           if (seat >= 0) has_assigned_joypad_controls |= (uint8)(1u << seat);
+          int ext_seat = ConfigSeatForExtControl(id);
+          if (ext_seat >= 0) {
+            has_assigned_joypad_ext |= (uint8)(1u << ext_seat);
+            seat = ext_seat;
+          }
           ParseGamepadArray(seat > 0 ? seat : 0, value, kKeyNameId[i].id, kKeyNameId[i].size);
           return true;
         }
@@ -789,6 +809,7 @@ void ConfigReloadGamepadMap(const char *filename) {
   joymap_ents = NULL;
   joymap_size = 0;
   has_assigned_joypad_controls = 0;
+  has_assigned_joypad_ext = 0;
 
   ReloadSection(filename, "[GamepadMap]", 5, true);
 

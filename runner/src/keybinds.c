@@ -30,6 +30,19 @@
 #define RECOMP_DEFAULT_KEY_R SDL_SCANCODE_V
 #endif
 
+/* L2/R2 keep the launcher's long-standing Q/E. R3 and the right stick sit
+ * on the keypad, the X8 16-bit layout (KP5 resets the weapon, KP8/2/4/6
+ * turn the weapon wheel). Nothing is bound to L3 by default. */
+#define KEYBINDS_EXT_DEFAULTS \
+        .l2       = SDL_SCANCODE_Q, \
+        .r2       = SDL_SCANCODE_E, \
+        .l3       = SDL_SCANCODE_UNKNOWN, \
+        .r3       = SDL_SCANCODE_KP_5, \
+        .rs_up    = SDL_SCANCODE_KP_8, \
+        .rs_down  = SDL_SCANCODE_KP_2, \
+        .rs_left  = SDL_SCANCODE_KP_4, \
+        .rs_right = SDL_SCANCODE_KP_6,
+
 /* One literal for the default layout, shared by the boot state and the
  * launcher's Reset-to-Defaults (keybinds_reset_player). */
 #define KEYBINDS_DEFAULTS { \
@@ -46,6 +59,7 @@
         .down   = SDL_SCANCODE_DOWN, \
         .left   = SDL_SCANCODE_LEFT, \
         .right  = SDL_SCANCODE_RIGHT, \
+        KEYBINDS_EXT_DEFAULTS \
     }, \
     /* Player 2 gets the SAME defaults as player 1.
      *
@@ -73,6 +87,7 @@
         .down   = SDL_SCANCODE_DOWN, \
         .left   = SDL_SCANCODE_LEFT, \
         .right  = SDL_SCANCODE_RIGHT, \
+        KEYBINDS_EXT_DEFAULTS \
     }, \
 }
 
@@ -97,6 +112,14 @@ static const ButtonDef s_buttons[] = {
     { "down",   offsetof(PlayerBinds, down)   },
     { "left",   offsetof(PlayerBinds, left)   },
     { "right",  offsetof(PlayerBinds, right)  },
+    { "l2",       offsetof(PlayerBinds, l2)       },
+    { "r2",       offsetof(PlayerBinds, r2)       },
+    { "l3",       offsetof(PlayerBinds, l3)       },
+    { "r3",       offsetof(PlayerBinds, r3)       },
+    { "rs_up",    offsetof(PlayerBinds, rs_up)    },
+    { "rs_down",  offsetof(PlayerBinds, rs_down)  },
+    { "rs_left",  offsetof(PlayerBinds, rs_left)  },
+    { "rs_right", offsetof(PlayerBinds, rs_right) },
     { NULL, 0 }
 };
 
@@ -182,7 +205,7 @@ static void write_player_section(FILE *f, const char *section, const PlayerBinds
     fprintf(f, "[%s]\n", section);
     for (const ButtonDef *bd = s_buttons; bd->name; bd++) {
         SDL_Scancode sc = *(const SDL_Scancode *)((const char *)pb + bd->offset);
-        fprintf(f, "%-7s = %s\n", bd->name, scancode_to_name(sc));
+        fprintf(f, "%-8s = %s\n", bd->name, scancode_to_name(sc));
     }
     fprintf(f, "\n");
 }
@@ -196,6 +219,9 @@ static void write_defaults(const char *path) {
         "# Use SDL key names. Common: A B C ... Z, 0-9, F1-F12, Up Down Left Right,\n"
         "# Return, Tab, Space, Left Shift, Right Shift, Left Ctrl, Right Ctrl,\n"
         "# Backspace, Escape, Backslash. Use \"None\" to leave a button unbound.\n"
+        "#\n"
+        "# l2/r2/l3/r3 and rs_up/rs_down/rs_left/rs_right are a modern pad's\n"
+        "# triggers, stick clicks and right stick.\n"
         "#\n"
         "# Both players default to the same keys. Only a player whose Input\n"
         "# source is Keyboard reads them, so this is not a conflict unless you\n"
@@ -342,6 +368,19 @@ uint16_t keybinds_read_player_runner(const uint8_t *keys, int player) {
     if (pb->x      != SDL_SCANCODE_UNKNOWN && keys[pb->x])      b |= 1u << 9;
     if (pb->l      != SDL_SCANCODE_UNKNOWN && keys[pb->l])      b |= 1u << 10;
     if (pb->r      != SDL_SCANCODE_UNKNOWN && keys[pb->r])      b |= 1u << 11;
+    return b;
+}
+
+uint8_t keybinds_read_player_ext(const uint8_t *keys, int player) {
+    if (!keys) return 0;
+    const PlayerBinds *pb = player_binds(player);
+    const SDL_Scancode sc[8] = {
+        pb->l2, pb->r2, pb->l3, pb->r3,
+        pb->rs_up, pb->rs_down, pb->rs_left, pb->rs_right,
+    };
+    uint8_t b = 0;
+    for (int i = 0; i < 8; ++i)
+        if (sc[i] != SDL_SCANCODE_UNKNOWN && keys[sc[i]]) b |= (uint8_t)(1u << i);
     return b;
 }
 

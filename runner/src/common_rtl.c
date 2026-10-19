@@ -688,6 +688,14 @@ void RtlSetMultitap(int port, int enabled) {
 int RtlGetMultitap(int port) { return joypad_get_multitap(port); }
 int RtlPlayerCount(void) { return joypad_player_count(); }
 
+static uint8 rtl_pad_ext[RTL_MAX_PLAYERS];
+void RtlSetPadExt(int slot, uint8 bits) {
+  if ((unsigned)slot < RTL_MAX_PLAYERS) rtl_pad_ext[slot] = bits;
+}
+uint8 RtlGetPadExt(int slot) {
+  return (unsigned)slot < RTL_MAX_PLAYERS ? rtl_pad_ext[slot] : 0;
+}
+
 /* SNES_MULTITAP=port1|port2|both|off. Applied once, before the first frame,
  * so a launcher or a soak script can turn a tap on without a rebuild. It
  * overrides whatever the game asked for — an explicit launch flag outranks a

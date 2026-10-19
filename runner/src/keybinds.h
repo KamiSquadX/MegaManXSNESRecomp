@@ -40,6 +40,11 @@ typedef struct {
     SDL_Scancode l, r;
     SDL_Scancode start, select;
     SDL_Scancode up, down, left, right;
+    /* Modern-pad controls past the SNES twelve: triggers, stick clicks and
+     * the right stick's four directions. keybinds_read_player_ext() reads
+     * them; the runner never folds them into the SNES word. */
+    SDL_Scancode l2, r2, l3, r3;
+    SDL_Scancode rs_up, rs_down, rs_left, rs_right;
 } PlayerBinds;
 
 /* Players 1 and 2 keep their historical fields. Players 3..8 exist for
@@ -80,10 +85,16 @@ uint16_t keybinds_read_player(const uint8_t *keys, int player);
  * way". Having both here means no runner has to know the mirror exists. */
 uint16_t keybinds_read_player_runner(const uint8_t *keys, int player);
 
+/* The extended controls for the same player, one bit each:
+ *   bit 0 L2, 1 R2, 2 L3, 3 R3, 4 R.S. Up, 5 R.S. Down, 6 R.S. Left,
+ *   bit 7 R.S. Right  (SNES_EXT_* in desktop/config.h). */
+uint8_t keybinds_read_player_ext(const uint8_t *keys, int player);
+
 /* ── Rebind API (used by the launcher's Configure view) ──────────────────
  * Buttons are indexed 0..keybinds_button_count()-1 in the fixed order
- * a, b, x, y, l, r, start, select, up, down, left, right — the same order
- * keybinds.ini writes them. Scancodes, NOT keycodes (keybinds.ini stores
+ * a, b, x, y, l, r, start, select, up, down, left, right, l2, r2, l3, r3,
+ * rs_up, rs_down, rs_left, rs_right — the same order keybinds.ini writes
+ * them. Scancodes, NOT keycodes (keybinds.ini stores
  * SDL scancode names; config.ini's [KeyMap] hotkeys use keycode names). */
 int          keybinds_button_count(void);
 const char  *keybinds_button_name(int button);              /* "a".."right" */

@@ -116,6 +116,12 @@ typedef struct SnesDesktopHostGame {
   void (*on_reset)(void);
   /* Immediately before RtlRunFrame. */
   void (*before_run_frame)(void);
+  /* One LOCAL seat's controls on their way to the guest, netplay and replay
+   * capture: *snes is the runner-layout 12-bit word, *ext the SNES_EXT_*
+   * controls. A title rewrites both (its own key config); *ext then holds
+   * the title's extended actions, read back with RtlGetPadExt. Called once
+   * per seat per frame before anything is sent. NULL: both pass unchanged. */
+  void (*map_seat_input)(int seat, uint16_t *snes, uint8_t *ext);
   /* Immediately after RtlRunFrame (guest state is at a frame boundary). */
   void (*after_run_frame)(const SnesDesktopHostFrameStats *stats);
   /* Return nonzero while the guest is in a phase whose wall-time debt the

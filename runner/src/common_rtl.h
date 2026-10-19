@@ -448,6 +448,13 @@ int  RtlGetMultitap(int port);
 /* Seats reachable in the current configuration: 2, 5, or 8. */
 int  RtlPlayerCount(void);
 
+/* A modern pad's controls past the SNES twelve (SNES_EXT_* bits: L2, R2, L3,
+ * R3, right stick), or whatever a title's SnesDesktopHostGame.map_seat_input
+ * turned them into. Not on the SNES bus: the host sets them for the frame
+ * about to run, beside RtlRunFrame's word, and a title reads them back. */
+void  RtlSetPadExt(int slot, uint8 bits);
+uint8 RtlGetPadExt(int slot);
+
 void RtlApuWrite(uint16 adr, uint8 val);
 
 /* APU port write observers: called for every guest write to $2140-$217F

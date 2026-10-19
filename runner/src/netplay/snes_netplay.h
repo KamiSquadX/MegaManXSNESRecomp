@@ -34,7 +34,10 @@ extern "C" {
  *   ICE  — rnet_session_start_ice + lobby WS signal relay (SNES_HAS_LOBBY_CLIENT)
  */
 
-#define SNES_NETPLAY_PAD_BYTES 4
+/* bytes 0..1 the 12-bit pad, 2..3 the game's sync bytes, 4 the seat's
+ * extended controls (RtlSetPadExt: L2/R2/L3/R3/right stick or a title's
+ * mapped actions). */
+#define SNES_NETPLAY_PAD_BYTES 5
 /* recomp-net carries up to RNET_MAX_SLOTS (8) seats; the SNES side reaches
  * that many only with a Super Multitap in each port. See docs/MULTITAP.md. */
 #define SNES_NETPLAY_MAX_SLOTS 8
@@ -159,6 +162,8 @@ int  snes_netplay_connect_timed_out(uint32_t timeout_ms);
 
 /* Stage local pad bits (12 SNES buttons) for the current sim tick. */
 void snes_netplay_stage_local(uint16_t buttons);
+/* The extended controls that go with the next snes_netplay_stage_local. */
+void snes_netplay_stage_local_ext(uint8_t ext);
 
 int  snes_netplay_needs_local_sample(void);
 int  snes_netplay_input_desync(uint32_t *tick, uint32_t *local_hash, uint32_t *remote_hash);

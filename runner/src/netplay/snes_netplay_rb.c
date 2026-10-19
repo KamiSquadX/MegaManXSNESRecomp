@@ -199,6 +199,9 @@ static void rb_host_publish(void *ctx, uint32_t tick, const RNetRbFrame *rows,
         g_rb.resolved[i] = rows[i].buttons & RB_BUTTON_MASK;
     if (g_rb.b.publish)
         g_rb.b.publish(tick, g_rb.resolved, slots);
+    /* rx carries the seat's extended controls (pad byte 4). */
+    for (i = 0; i < slots && i < RB_MAX_SLOTS; ++i)
+        RtlSetPadExt(i, rows[i].rx);
     if (g_rb.sync_valid && g_rb.b.apply_sync_bytes)
         g_rb.b.apply_sync_bytes(g_rb.sync_bytes);
 }
@@ -280,6 +283,8 @@ static void rb_host_decode(void *ctx, int slot, const RNetInputSample *in,
     out->stick_x = 0;
     out->stick_y = 0;
     out->analog = 0;
+    out->rx = in->size >= 5 ? in->bytes[4] : 0;   /* extended controls */
+    out->ry = 0;
 }
 
 static void rb_host_sanitize(void *ctx, int slot, RNetRbFrame *f)
@@ -292,6 +297,7 @@ static void rb_host_sanitize(void *ctx, int slot, RNetRbFrame *f)
     f->stick_x = 0;
     f->stick_y = 0;
     f->analog = 0;
+    f->ry = 0;   /* rx: the seat's extended controls, any value is valid */
 }
 
 static void rb_host_neutral(void *ctx, int slot, RNetRbFrame *out)
@@ -299,6 +305,7 @@ static void rb_host_neutral(void *ctx, int slot, RNetRbFrame *out)
     (void)ctx;
     (void)slot;
     out->buttons = 0u;   /* active high: nothing held */
+    out->rx = 0u;
 }
 
 /* Slot 0 carries the authoritative game sync bytes in pad bytes 2..3. Taken

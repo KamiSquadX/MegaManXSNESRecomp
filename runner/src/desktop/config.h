@@ -63,7 +63,40 @@ enum {
   kKeys_ControlsP7_Last = kKeys_ControlsP7 + 11,
   kKeys_ControlsP8,
   kKeys_ControlsP8_Last = kKeys_ControlsP8 + 11,
+  /* A modern pad's controls past the SNES twelve, per seat, in SNES_EXT_*
+   * order: L2, R2, L3, R3, R.S. Up, R.S. Down, R.S. Left, R.S. Right.
+   * [GamepadMap] ControlsExt / ControlsExtP2.. and [KeyMap] bind them; they
+   * never reach the SNES bus (RtlSetPadExt carries them). Appended so every
+   * earlier command keeps its value. */
+  kKeys_ControlsExt,
+  kKeys_ControlsExt_Last = kKeys_ControlsExt + 7,
+  kKeys_ControlsExtP2,
+  kKeys_ControlsExtP2_Last = kKeys_ControlsExtP2 + 7,
+  kKeys_ControlsExtP3,
+  kKeys_ControlsExtP3_Last = kKeys_ControlsExtP3 + 7,
+  kKeys_ControlsExtP4,
+  kKeys_ControlsExtP4_Last = kKeys_ControlsExtP4 + 7,
+  kKeys_ControlsExtP5,
+  kKeys_ControlsExtP5_Last = kKeys_ControlsExtP5 + 7,
+  kKeys_ControlsExtP6,
+  kKeys_ControlsExtP6_Last = kKeys_ControlsExtP6 + 7,
+  kKeys_ControlsExtP7,
+  kKeys_ControlsExtP7_Last = kKeys_ControlsExtP7 + 7,
+  kKeys_ControlsExtP8,
+  kKeys_ControlsExtP8_Last = kKeys_ControlsExtP8 + 7,
   kKeys_Total,
+};
+
+/* Extended-control bits (RtlSetPadExt / keybinds_read_player_ext). */
+enum {
+  SNES_EXT_L2 = 1 << 0,
+  SNES_EXT_R2 = 1 << 1,
+  SNES_EXT_L3 = 1 << 2,
+  SNES_EXT_R3 = 1 << 3,
+  SNES_EXT_RS_UP = 1 << 4,
+  SNES_EXT_RS_DOWN = 1 << 5,
+  SNES_EXT_RS_LEFT = 1 << 6,
+  SNES_EXT_RS_RIGHT = 1 << 7,
 };
 
 enum {
@@ -207,6 +240,12 @@ enum {
   kGamepadBtn_DpadRight,
   kGamepadBtn_L2,
   kGamepadBtn_R2,
+  /* The right stick read as four buttons (deadzone and eight-way segments
+   * as the left stick's d-pad emulation). */
+  kGamepadBtn_RsUp,
+  kGamepadBtn_RsDown,
+  kGamepadBtn_RsLeft,
+  kGamepadBtn_RsRight,
   kGamepadBtn_Count,
 };
 
@@ -258,6 +297,16 @@ static inline int ConfigSeatForControl(int cmd) {
   if (cmd >= kKeys_Controls && cmd <= kKeys_Controls_Last) return 0;
   if (cmd >= kKeys_ControlsP2 && cmd <= kKeys_ControlsP2_Last) return 1;
   if (cmd >= kKeys_ControlsP3 && cmd <= kKeys_ControlsP8_Last) return 2 + (cmd - kKeys_ControlsP3) / 12;
+  return -1;
+}
+
+/* Extended-control range of seat `seat`, and the seat owning one of them. */
+static inline int ConfigSeatExtBase(int seat) {
+  return seat >= 0 && seat < kSnesHostPadSeats ? kKeys_ControlsExt + seat * 8 : 0;
+}
+static inline int ConfigSeatForExtControl(int cmd) {
+  if (cmd >= kKeys_ControlsExt && cmd <= kKeys_ControlsExtP8_Last)
+    return (cmd - kKeys_ControlsExt) / 8;
   return -1;
 }
 

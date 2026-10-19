@@ -162,6 +162,7 @@ int  snes_netplay_connect_timed_out(uint32_t timeout_ms)
     return 0;
 }
 void snes_netplay_stage_local(uint16_t buttons) { (void)buttons; }
+void snes_netplay_stage_local_ext(uint8_t ext) { (void)ext; }
 int  snes_netplay_needs_local_sample(void) { return 0; }
 int  snes_netplay_input_desync(uint32_t *tick, uint32_t *local_hash, uint32_t *remote_hash)
 {
@@ -235,6 +236,8 @@ enum {
 typedef struct {
     RNetSession *session;
     uint16_t     staged_buttons;
+    uint8_t      staged_ext;
+    uint8_t      pending_ext;        /* next stage_local's extended controls */
     int          staged_valid;
     int          active;
     int          slot_count;
@@ -317,8 +320,11 @@ static void np_apply_published(const uint16_t *buttons, int slots)
     int i;
     for (i = 0; i < SNES_NETPLAY_MAX_SLOTS; ++i)
         g_np.published[i] = 0;
-    if (!buttons || slots <= 0)
+    if (!buttons || slots <= 0) {
+        for (i = 0; i < SNES_NETPLAY_MAX_SLOTS; ++i)
+            RtlSetPadExt(i, 0);
         return;
+    }
     if (slots > SNES_NETPLAY_MAX_SLOTS)
         slots = SNES_NETPLAY_MAX_SLOTS;
     for (i = 0; i < slots; ++i) {
@@ -508,7 +514,8 @@ int snes_netplay_connect_timed_out(uint32_t timeout_ms)
     return (uint32_t)(now - g_connect_wait_started_ms) >= timeout_ms;
 }
 
-static void encode_pad(uint16_t buttons, RNetInputSample *out, rnet_u32 tick)
+static void encode_pad(uint16_t buttons, uint8_t ext, RNetInputSample *out,
+                       rnet_u32 tick)
 {
     memset(out, 0, sizeof(*out));
     out->tick = tick;
@@ -517,13 +524,21 @@ static void encode_pad(uint16_t buttons, RNetInputSample *out, rnet_u32 tick)
     out->bytes[1] = (rnet_u8)((buttons >> 8) & 0xFFu);
     if (g_capture_sync_bytes)
         g_capture_sync_bytes(&out->bytes[2]);
+    out->bytes[4] = (rnet_u8)ext;
     out->valid = 1;
+}
+
+static uint8_t decode_pad_ext(const RNetInputSample *in)
+{
+    if (!in || !in->valid || in->size < 5)
+        return 0;
+    return (uint8_t)in->bytes[4];
 }
 
 static void np_prime_after_hard_resync(void)
 {
     RNetInputSample neutral;
-    encode_pad(0, &neutral, 0);
+    encode_pad(0, 0, &neutral, 0);
     rnet_session_prime_delay_inputs(g_np.session, neutral.bytes, neutral.size);
 }
 
@@ -538,7 +553,8 @@ static void host_sample_local(rnet_u32 tick, RNetInputSample *out, void *ctx)
 {
     NetplayState *st = (NetplayState *)ctx;
     uint16_t buttons = st->staged_valid ? st->staged_buttons : 0;
-    encode_pad(buttons, out, tick);
+    uint8_t ext = st->staged_valid ? st->staged_ext : 0;
+    encode_pad(buttons, ext, out, tick);
 }
 
 static void host_publish(rnet_u32 tick, const RNetInputSample *by_slot, int slots, void *ctx)
@@ -558,6 +574,8 @@ static void host_publish(rnet_u32 tick, const RNetInputSample *by_slot, int slot
     for (i = 0; i < n; ++i)
         buttons[i] = decode_pad(&by_slot[i]) & 0x0FFFu;
     np_apply_published(buttons, n);
+    for (i = 0; i < n; ++i)
+        RtlSetPadExt(i, decode_pad_ext(&by_slot[i]));
     /* Slot 0 carries the authoritative game-defined sync bytes. */
     if (by_slot[0].valid && by_slot[0].size >= 4) {
         st->host_sync[0] = by_slot[0].bytes[2];
@@ -745,17 +763,26 @@ uint32_t snes_netplay_frames_finished(void)
     return snes_netplay_active() ? g_np.frames_finished : 0;
 }
 
+void snes_netplay_stage_local_ext(uint8_t ext)
+{
+    g_np.pending_ext = ext;
+}
+
 void snes_netplay_stage_local(uint16_t buttons)
 {
+    uint8_t ext = g_np.pending_ext;
     buttons &= 0x0FFFu;
     /* While the synchronized menu is up -- including the few ticks every
      * peer still runs to reach the pause tick -- menu navigation must not
      * become game input. */
-    if (snes_netplay_active() && g_np.menu)
+    if (snes_netplay_active() && g_np.menu) {
         buttons = 0;
+        ext = 0;
+    }
     if (g_np_rollback) {
         snes_netplay_rb_stage_local(buttons);
         g_np.staged_buttons = buttons;
+        g_np.staged_ext = ext;
         g_np.staged_valid = 1;
         return;
     }
@@ -764,12 +791,14 @@ void snes_netplay_stage_local(uint16_t buttons)
         if (g_np.latched_for_tick && g_np.latched_sim_tick == t)
             return;
         g_np.staged_buttons = buttons;
+        g_np.staged_ext = ext;
         g_np.staged_valid = 1;
         g_np.latched_for_tick = 1;
         g_np.latched_sim_tick = t;
         return;
     }
     g_np.staged_buttons = buttons;
+    g_np.staged_ext = ext;
     g_np.staged_valid = 1;
 }
 
