@@ -53,7 +53,7 @@ function(add_mmx_variant TARGET GEN_DIR CFG_DIR)
         endif()
     endif()
     add_executable(${TARGET} ${SNESRECOMP_RUNNER_SOURCES}
-        src/main.c src/mmx_startup.c src/mmx_netplay.c src/mmx_display.c src/mmx_renderer.c src/mmx_render_assets.c src/mmx_wide_policy.c
+        src/main.c src/mmx_startup.c src/mmx_netplay.c src/mmx_key_config.c src/mmx_options.c src/mmx_display.c src/mmx_renderer.c src/mmx_render_assets.c src/mmx_wide_policy.c
         src/mmx_00.c src/gen_stubs.c src/mmx_cpu_infra.c src/mmx_rtl.c
         src/mmx_spc_player.c src/mmx_replay.c src/mods/mmx_diagnostics_plugin.c
         src/mods/mmx_widescreen_plugin.c src/mods/mmx_msu1_plugin.c
@@ -101,7 +101,8 @@ function(add_mmx_variant TARGET GEN_DIR CFG_DIR)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_zero_hooks.py
                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_coop_hooks.py
                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_weapon_hooks.py
-                ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_boss_rush_hooks.py)
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_boss_rush_hooks.py
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_options_hooks.py)
             add_custom_target(${TARGET}_widescreen_overrides
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_overrides.py
                         --gen-dir ${GEN_DIR}
@@ -116,6 +117,8 @@ function(add_mmx_variant TARGET GEN_DIR CFG_DIR)
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_coop_hooks.py
                         --gen-dir ${GEN_DIR}
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_boss_rush_hooks.py
+                        --gen-dir ${GEN_DIR}
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_options_hooks.py
                         --gen-dir ${GEN_DIR}
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                 COMMENT "Applying Mega Man X generated-code mod hooks" VERBATIM)

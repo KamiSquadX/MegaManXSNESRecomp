@@ -141,6 +141,11 @@ for 1.5 seconds to withdraw, and tap it to rejoin. A player who dies can tap
 are not available during boss or miniboss fights; the request waits until the
 fight is over, or until a 1-up is collected if no lives are left.
 
+Modern controllers' L2, R2, L3, R3 and right stick are mappable too, and the
+title screen's **KEY CONFIG** assigns every action X8-demake style. **OPTION
+MODE** adds **DOUBLE TAP DASH** and **HOLD DASH**; see
+[KEY CONFIG and Option Mode](docs/key-config.md).
+
 Reopen the launcher during play with **Ctrl+L** or controller **Select+L3**.
 Configure system shortcuts in **Hotkeys**. **F7** opens the save-state browser
 and **F8** opens rewind; both pause gameplay while you choose.

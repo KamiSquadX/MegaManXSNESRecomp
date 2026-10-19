@@ -1,8 +1,8 @@
 # Endless Boss Rush
 
 The **Boss Rush** mod is enabled by default under **Game Modes** in the launcher
-and the netplay lobby. It adds a fourth entry to the USA game's title menu;
-turning it off restores the original three choices. The host's selection is
+and the netplay lobby. It adds a fifth entry, below KEY CONFIG, to the USA game's title menu
+(the five rows sit one row higher than X1's three); turning it off removes it. The host's selection is
 part of the synchronized mod plan for both players. Start the session and
 choose **Boss Rush** on the in-game title screen to play online.
 It starts directly
@@ -167,7 +167,7 @@ The title entry uses the native BG3 font and selection palettes. Navigation
 wraps through all four rows with Up, Down or Select. Returning through Main Menu
 retires the stage's auxiliary tasks and replays the complete native logo opening,
 including its title music, before showing the menu again. Confirmation
-plays the native mini charged shot on the selected fourth row before the fade;
+plays the native mini charged shot on the selected BOSS RUSH row before the fade;
 held confirmation buttons are consumed until released so they do not fire
 again after arrival. Boss meters
 reuse the game's original frame, overlapping energy strips and skull footer;

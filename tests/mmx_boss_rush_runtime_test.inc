@@ -116,20 +116,118 @@ static void rush_conveyor_checks(uint8_t *snapshot,size_t cap) {
 }
 static void rush_title_navigation_checks(uint8_t *snapshot,size_t cap) {
   size_t saved=RtlSaveSnapshotToMemory(snapshot,cap);check(saved,"title navigation baseline saves");
-  for(unsigned row=0;row<4;++row) for(unsigned direction=0;direction<3;++direction) {
+  /* X1's three rows, KEY CONFIG, BOSS RUSH: five rows, 16px above X1's. */
+  for(unsigned row=0;row<5;++row) for(unsigned direction=0;direction<3;++direction) {
     check(RtlLoadSnapshotFromMemory(snapshot,saved),"title navigation baseline restores");
     for(unsigned step=0;step<row;++step) {frame(SNES_PAD_DOWN);zero_replay(12);}
-    check(MmxBossRushGetState().selection==row,"native input reaches each of the four title rows");
+    check(MmxBossRushGetState().selection==row,"native input reaches each of the five title rows");
     unsigned key=direction==2?SNES_PAD_SELECT:direction?SNES_PAD_DOWN:SNES_PAD_UP;
-    unsigned expected=(row+(direction?1:3))%4;
+    unsigned expected=(row+(direction?1:4))%5;
     frame(key);zero_replay(12);
     fprintf(stderr,"title navigation row=%u direction=%s selected=%u expected=%u native=%u y=%u\n",
         row,direction==2?"select":direction?"down":"up",MmxBossRushGetState().selection,expected,g_ram[0x3c],eagle_word(g_ram+0xbb0));
-    check(MmxBossRushGetState().selection==expected && eagle_word(g_ram+0xbb0)==166+16*expected,
-        "both title navigation directions wrap over all four choices");
+    check(MmxBossRushGetState().selection==expected && eagle_word(g_ram+0xbb0)==150+16*expected,
+        "both title navigation directions wrap over all five choices");
   }
+  /* KEY CONFIG: the title holds while the page is open -- X1's idle timer
+   * never reaches the attract demo -- and closes on a seat's signal. */
+  check(RtlLoadSnapshotFromMemory(snapshot,saved),"key config baseline restores");
+  for(unsigned step=0;step<3;++step) {frame(SNES_PAD_DOWN);zero_replay(12);}
+  frame(SNES_PAD_START);
+  check(MmxBossRushGetState().menu==3,"KEY CONFIG opens from the fourth title row");
+  for(unsigned t=0;t<600;++t) frame(0);
+  check(MmxBossRushGetState().menu==3 && g_ram[0xd1]==0 && MmxBossRushGetState().mode==MMX_RUSH_OFF,
+      "the title waits behind KEY CONFIG past X1's idle timeout");
+  RtlSetPadExt(0,MMX_EXT_CLOSE_KEY_CONFIG);frame(0);RtlSetPadExt(0,0);
+  check(MmxBossRushGetState().menu==1 && MmxBossRushGetState().selection==3,
+      "a seat's close signal returns to the KEY CONFIG row");
+  frame(SNES_PAD_START);zero_replay(12);
+  check(MmxBossRushGetState().menu==3 && g_ram[0xd1]==0,
+      "Start on KEY CONFIG never confirms X1's Option Mode underneath");
+  RtlSetPadExt(1,MMX_EXT_CLOSE_KEY_CONFIG);frame(0);RtlSetPadExt(1,0);
+  check(MmxBossRushGetState().menu==1,"either seat can close the page");
   check(RtlLoadSnapshotFromMemory(snapshot,saved),"title cursor restores after navigation checks");
   puts("MMX BOSS RUSH TITLE NAVIGATION CHECKS PASSED");
+}
+/* OPTION MODE: with DOUBLE TAP DASH off, tapping left twice walks. */
+static void options_dash_checks(uint8_t *snapshot,size_t cap) {
+  for(unsigned t=0;t<30;++t) frame(0);
+  size_t saved=RtlSaveSnapshotToMemory(snapshot,cap);check(saved,"dash option baseline saves");
+  MmxOptionsState before=MmxOptionsGetState();
+  int dx[2];
+  for(unsigned off=0;off<2;++off) {
+    check(RtlLoadSnapshotFromMemory(snapshot,saved),"dash option baseline restores");
+    MmxOptionsState o={0};o.no_double_tap=(uint8_t)off;check(MmxOptionsSetState(&o),"dash option installs");
+    int x0=eagle_word(g_ram+0xbad);
+    frame(SNES_PAD_LEFT);frame(SNES_PAD_LEFT);frame(0);frame(0);
+    for(unsigned t=0;t<16;++t) frame(SNES_PAD_LEFT);
+    dx[off]=x0-eagle_word(g_ram+0xbad);
+  }
+  fprintf(stderr,"double tap distance on=%d off=%d\n",dx[0],dx[1]);
+  check(dx[0]>dx[1]+8 && dx[1]>0,"a double tap dashes only with DOUBLE TAP DASH on");
+  check(RtlLoadSnapshotFromMemory(snapshot,saved),"dash option baseline restores after checks");
+  MmxOptionsSetState(&before);
+  puts("MMX OPTION MODE DASH CHECKS PASSED");
+}
+/* OPTION MODE: HOLD DASH, inside the arena before the bosses arrive. */
+static void options_hold_dash_checks(uint8_t *snapshot,size_t cap) {
+  size_t saved=RtlSaveSnapshotToMemory(snapshot,cap);check(saved,"wall kick baseline saves");
+  MmxOptionsState before=MmxOptionsGetState();
+  /* HOLD DASH: cling to the closed door behind X, then kick off with dash held since
+   * before the jump (no fresh press). Only HOLD DASH makes it a dash kick. */
+  int kick[2];bool state_ok=true;
+  for(unsigned hold=0;hold<2;++hold) {
+    check(RtlLoadSnapshotFromMemory(snapshot,saved),"wall kick baseline restores");
+    MmxOptionsState o={0};o.hold_dash=(uint8_t)hold;check(MmxOptionsSetState(&o),"hold dash installs");
+    for(unsigned t=0;t<60;++t) frame(SNES_PAD_LEFT);
+    for(unsigned t=0;t<24;++t) frame(SNES_PAD_LEFT|SNES_PAD_B|SNES_PAD_A);
+    for(unsigned t=0;t<12;++t) frame(SNES_PAD_LEFT|SNES_PAD_A);
+    state_ok&=g_ram[0xbaa]==0x12;
+    unsigned state=g_ram[0xbaa];int x0=eagle_word(g_ram+0xbad);
+    frame(SNES_PAD_LEFT|SNES_PAD_A|SNES_PAD_B);
+    for(unsigned t=0;t<12;++t) frame(SNES_PAD_A|SNES_PAD_B);
+    kick[hold]=eagle_word(g_ram+0xbad)-x0;
+    fprintf(stderr,"wall kick hold=%u cling-state=%02x x0=%04x distance=%d\n",hold,state,x0,kick[hold]);
+  }
+  check(state_ok && kick[1]>kick[0]+4,"holding dash through a wall kick dashes only with HOLD DASH on");
+  check(RtlLoadSnapshotFromMemory(snapshot,saved),"arena restores after wall kick checks");
+  MmxOptionsSetState(&before);
+  puts("MMX OPTION MODE HOLD DASH CHECKS PASSED");
+}
+/* KEY CONFIG's mapping, host side: the defaults are the identity on every
+ * SNES button, the extras become MMX_EXT_* actions, and a rebind moves an
+ * action to the new control. */
+static void key_config_mapping_checks(void) {
+  MmxKeyConfigResetDefaults();
+  static const uint16_t snes_bits[]={SNES_PAD_B,SNES_PAD_Y,SNES_PAD_SELECT,SNES_PAD_UP,SNES_PAD_DOWN,
+      SNES_PAD_LEFT,SNES_PAD_RIGHT,SNES_PAD_A,SNES_PAD_X,SNES_PAD_L,SNES_PAD_R};
+  for(unsigned i=0;i<sizeof(snes_bits)/sizeof(snes_bits[0]);++i) {
+    uint16_t snes=snes_bits[i];uint8_t ext=0;
+    MmxKeyConfigMapSeat(0,&snes,&ext);
+    /* Face Button Left is also menu confirm, which is Start on a menu. */
+    uint16_t expected=snes_bits[i]==SNES_PAD_Y?SNES_PAD_Y|SNES_PAD_START:snes_bits[i];
+    check(snes==expected,"default KEY CONFIG passes each SNES button through");
+  }
+  struct {uint8_t in,out;} ext_cases[]={
+    {1u<<1,MMX_EXT_ARMOR},{1u<<3,MMX_EXT_BUSTER},{1u<<6,MMX_EXT_WHEEL_LEFT},
+    {1u<<7,MMX_EXT_WHEEL_RIGHT},{1u<<4,MMX_EXT_WHEEL_UP},{1u<<5,MMX_EXT_WHEEL_DOWN},
+  };
+  for(unsigned i=0;i<sizeof(ext_cases)/sizeof(ext_cases[0]);++i) {
+    uint16_t snes=0;uint8_t ext=ext_cases[i].in;
+    MmxKeyConfigMapSeat(0,&snes,&ext);
+    check(!snes && ext==ext_cases[i].out,"R2, R3 and the right stick default to X8's actions");
+  }
+  { /* Face Button Left is shot AND menu confirm; Face Button Bottom jump AND cancel. */
+    uint16_t snes=SNES_PAD_B;uint8_t ext=0;MmxKeyConfigMapSeat(0,&snes,&ext);
+    check(snes==SNES_PAD_B && ext==MMX_EXT_CANCEL,"cancel defaults to Face Button Bottom");
+  }
+  MmxKeyConfigSetBinding(MMX_KEY_DASH,MMX_PAD_R2);
+  { uint16_t snes=0;uint8_t ext=1u<<1;MmxKeyConfigMapSeat(0,&snes,&ext);
+    check(snes==SNES_PAD_A,"a rebind moves dash onto R2"); }
+  { uint16_t snes=SNES_PAD_A;uint8_t ext=0;MmxKeyConfigMapSeat(0,&snes,&ext);
+    check(!snes,"the old dash button no longer dashes"); }
+  MmxKeyConfigResetDefaults();
+  puts("MMX KEY CONFIG MAPPING CHECKS PASSED");
 }
 static void rush_return_title_checks(void) {
   MmxBossRushFinish();frame(0);frame(SNES_PAD_DOWN);frame(0);frame(SNES_PAD_START);frame(0);
@@ -225,9 +323,10 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
   size_t n=RtlSaveSnapshotToMemory(start,cap);check(n,"combined Zero/Rush snapshot saves");
   size_t rush_bytes=sizeof(MmxBossRushState),audio_bytes=sizeof(MmxBossRushAudioState),
       visual_bytes=sizeof(MmxBossRushVisualState),bounds_bytes=sizeof(MmxCoopViewBoundsState),
-      roster_bytes=sizeof(MmxBossRushRosterState),scratch_bytes=sizeof(MmxBossRushScratchState);
+      roster_bytes=sizeof(MmxBossRushRosterState),scratch_bytes=sizeof(MmxBossRushScratchState),
+      options_bytes=sizeof(MmxOptionsState);
   size_t v21_bytes=MMX_ZERO_EXTENSION_STATE_BYTES+rush_bytes+audio_bytes+visual_bytes;
-  size_t tail=n-v21_bytes-bounds_bytes-roster_bytes-scratch_bytes;
+  size_t tail=n-v21_bytes-bounds_bytes-roster_bytes-scratch_bytes-options_bytes;
   size_t chunk=0;
   for(size_t i=n-8;i>8;--i) {
     uint32_t magic;memcpy(&magic,start+i,4);
@@ -235,12 +334,12 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
   }
   check(chunk && tail>chunk,"bounded game state tail located");
   uint32_t version;memcpy(&version,start+chunk+4,4);
-  check(version==24,"combined state uses v24 with the Boss Rush roster and scratch RAM");
+  check(version==25,"combined state uses v25 with the Boss Rush state and OPTION MODE's dash options");
   MmxBossRushState original=MmxBossRushGetState();
   /* 0: main v18 (extension only); 1-3: Rush previews v18/v19/v20;
    * 4: v21 extension + Rush; 5: v22 adds per-seat view bounds; 6: v23 adds
-   * the roster. */
-  for(unsigned format=0;format<7;++format) {
+   * the roster; 7: v24 adds the relocated bosses' scratch RAM. */
+  for(unsigned format=0;format<8;++format) {
     memcpy(legacy,start,n);size_t length=n;
     version=format?format+17:18;
     if(!format) length=tail+MMX_ZERO_EXTENSION_STATE_BYTES; /* main v18 */
@@ -248,7 +347,8 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
       size_t bytes=rush_bytes+(format>=2?audio_bytes:0)+(format>=3?visual_bytes:0);
       memmove(legacy+tail,start+tail+MMX_ZERO_EXTENSION_STATE_BYTES,bytes);
       length=tail+bytes; /* original Rush v18/v19/v20 */
-    } else length=tail+v21_bytes+(format>=5?bounds_bytes:0)+(format>=6?roster_bytes:0);
+    } else length=tail+v21_bytes+(format>=5?bounds_bytes:0)+(format>=6?roster_bytes:0)+
+        (format>=7?scratch_bytes:0);
     memcpy(legacy+chunk+4,&version,4);rush_extension_value=99;
     check(RtlLoadSnapshotFromMemory(legacy,length),"main/preview/current memory state imports");
     check(rush_extension_value==(format==0 || format>=4?7:0),
@@ -1224,11 +1324,12 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
   check(MmxBossRushGetState().menu==1,"Boss Rush appears on the native title menu");
   zero_replay(180);
   if(getenv("MMX_BOSS_RUSH_MENU_TEST")) rush_title_navigation_checks(start,cap);
-  for(unsigned n=0;n<3;++n) {frame(SNES_PAD_DOWN);zero_replay(12);}
-  check(MmxBossRushGetState().selection==3,"fourth title option is navigable");
-  check(MmxRendererSaveCapture("rush-title.cap"),"fourth title entry capture saves");
+  if(getenv("MMX_BOSS_RUSH_MENU_TEST")) key_config_mapping_checks();
+  for(unsigned n=0;n<4;++n) {frame(SNES_PAD_DOWN);zero_replay(12);}
+  check(MmxBossRushGetState().selection==4,"fifth title option is navigable");
+  check(MmxRendererSaveCapture("rush-title.cap"),"fifth title entry capture saves");
   frame(SNES_PAD_Y);frame(SNES_PAD_Y);
-  check(MmxRendererSaveCapture("rush-confirm.cap"),"confirmation keeps the selected fourth row");
+  check(MmxRendererSaveCapture("rush-confirm.cap"),"confirmation keeps the selected fifth row");
   fprintf(stderr,"rush confirm state=%u/%u/%u/%u script=%u xy=%u,%u action=%u:%u\n",g_ram[0x38],g_ram[0x39],g_ram[0x3b],g_ram[0x3c],g_ram[0xc01],g_ram[0xbad]|g_ram[0xbae]<<8,g_ram[0xbb0]|g_ram[0xbb1]<<8,g_ram[0xbaa],g_ram[0xbab]);
   check(g_ram[0xbab]==2 && (g_ram[0xbb0]|g_ram[0xbb1]<<8)==214,
       "native title confirmation shot runs on the Boss Rush row");
@@ -1253,6 +1354,7 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
   check(MmxRendererSaveCapture("rush-preparation.cap"),"preparation corridor capture saves");
   for(unsigned t=0;t<30;++t) frame(SNES_PAD_Y);
   for(unsigned d=0x1228;d<0x1428;d+=64) check(!g_ram[d],"held confirmation does not fire a weapon");
+  if(getenv("MMX_BOSS_RUSH_MENU_TEST")) options_dash_checks(start,cap);
   zero_replay(180);
   check(MmxBossRushGetState().mode==MMX_RUSH_PREPARING &&
       !MmxBossRushGetState().bosses[0].phase && !MmxBossRushGetState().bosses[1].phase,
@@ -1285,6 +1387,7 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
           "Mammoth's native room retains horizontal scrolling limits");
       check(MmxRendererSaveCapture("rush-arena-left.cap"),"left side of the scrolling arena capture saves");
       stopped_inside=true;
+      if(getenv("MMX_BOSS_RUSH_MENU_TEST")) options_hold_dash_checks(start,cap);
     }
     if(!music_replayed && MmxBossRushGetState().loaded==MMX_RUSH_MUSIC_PENDING) {
       size_t pending=RtlSaveSnapshotToMemory(expected,cap);

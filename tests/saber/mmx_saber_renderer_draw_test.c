@@ -11,6 +11,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* KEY CONFIG and OPTION MODE live in the game; a renderer-only build has no
+ * page open and no options screen. */
+#include "mmx_key_config.h"
+#include "mmx_options.h"
+void MmxKeyConfigDraw(uint32_t *out, int width) { (void)out; (void)width; }
+bool MmxOptionsScreenActive(void) { return false; }
+MmxOptionsState MmxOptionsGetState(void) { MmxOptionsState s = {0}; return s; }
+
+
 bool MmxKncBugfixActive(unsigned seat) { (void)seat;return false; }
 unsigned MmxKncBugfixPhase(void) { return 0; }
 /* No relocated Boss Rush art in this test. */

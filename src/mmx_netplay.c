@@ -1,4 +1,5 @@
 /* MMX's session rules. Transport, lobby discovery and rollback stay shared. */
+#include "mmx_options.h"
 #include "mmx_netplay.h"
 #include "mmx_boss_rush_foreign.h"
 #include "mod_runtime.h"
@@ -230,6 +231,8 @@ void MmxNetplayConfigureLauncher(RecompLauncherCGameInfo *info) {
 }
 
 int MmxNetplayPrepare(int from_lobby, char *reason, size_t cap) {
+  /* Every peer starts from X1's dash behavior, whatever its own file says. */
+  MmxOptionsUseDefaults();
   if (!from_lobby) mode_changed(1);
   if (validate_plan()) return 1;
   snprintf(reason, cap, "%s", s_error);

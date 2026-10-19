@@ -20,18 +20,21 @@ static void boss_rush_policy_checks(const RecompLauncherCModProvider *p, const c
   title_ram[0xba9]=2;title_ram[0xbad]=32;title_ram[0xbb0]=198;
   MmxBossRushReset();
   MmxBossRushFrame(title_ram,0);MmxBossRushFrame(title_ram,SNES_PAD_DOWN);
-  check(MmxBossRushGetState().selection==3 && title_ram[0xbb0]==214,
-      "enabled lobby plan exposes the fourth title choice");
+  check(MmxBossRushGetState().selection==3 && title_ram[0xbb0]==198,
+      "KEY CONFIG follows X1's Option Mode row");
+  MmxBossRushFrame(title_ram,0);MmxBossRushFrame(title_ram,SNES_PAD_DOWN);
+  check(MmxBossRushGetState().selection==4 && title_ram[0xbb0]==214,
+      "enabled lobby plan exposes the fifth title choice");
   check(p->feature_enable(p->ctx,rush,"boss_rush",0) && p->commit_netplay(p->ctx,rom),
       "host can disable Boss Rush before the match");
   snes_mod_runtime_activate_plugins_c();
   MmxBossRushFrame(title_ram,0);
-  check(!MmxBossRushEnabled() && !MmxBossRushGetState().menu &&
-      title_ram[0xbb0]==198 && title_ram[0x3c]==2,
-      "disabling the selected fourth row restores the native Option cursor");
+  check(!MmxBossRushEnabled() && MmxBossRushGetState().menu==1 &&
+      MmxBossRushGetState().selection==3 && title_ram[0xbb0]==214,
+      "disabling the selected fifth row moves the cursor to KEY CONFIG");
   MmxBossRushFrame(title_ram,SNES_PAD_DOWN);MmxBossRushFrame(title_ram,0);
   MmxBossRushFrame(title_ram,SNES_PAD_START);
-  check(MmxBossRushGetState().mode==MMX_RUSH_OFF && !MmxBossRushGetState().menu,
+  check(MmxBossRushGetState().mode==MMX_RUSH_OFF && MmxBossRushGetState().selection==0,
       "disabled Boss Rush cannot start through title inputs");
 
   char disabled[2048],enabled[2048],reason[256];

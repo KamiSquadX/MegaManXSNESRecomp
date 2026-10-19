@@ -1,4 +1,6 @@
 #include "mmx_renderer.h"
+#include "mmx_key_config.h"
+#include "mmx_options.h"
 #include "mmx_display.h"
 #include "mmx_wide_policy.h"
 #include "mmx_render_assets.h"
@@ -1067,11 +1069,41 @@ static uint16_t background(const Ppu *p, const Raster *r, unsigned layer, int x,
   if(!stage && layer==2 && frame_rush.menu && (frame_rush.mode==MMX_RUSH_OFF ||
       (frame_rush.mode==MMX_RUSH_LOADING && !frame_rush.stage_started))) {
     /* Native title lettering is ASCII-indexed BG3 CHR. Keep its spacing,
-     * cyan/orange palettes, raster brightness and priority for all four rows. */
-    if((ty==20 || ty==22 || ty==24) && tx>=10 && tx<21)
-      tile=(uint16_t)((tile&~0x1c00)|(((ty-20)/2==frame_rush.selection)?0x400:0));
-    if(ty==26 && tx>=10 && tx<19)
-      tile=(uint16_t)(0x2000|(frame_rush.selection==3?0x400:0)|"BOSS RUSH"[tx-10]);
+     * cyan/orange palettes, raster brightness and priority for every row.
+     * X1's three rows, KEY CONFIG, then BOSS RUSH when offered; five rows
+     * move up one row pair so the last stays on screen. */
+    bool five=MmxBossRushEnabled();
+    int first=five?18:20;
+    if(ty>=(unsigned)first && ty<=26 && !((ty-first)&1) && tx>=10 && tx<21) {
+      unsigned row=(ty-first)/2;
+      unsigned palette=row==frame_rush.selection?0x400:0;
+      if(row<3) {
+        /* X1's own row, read from where X1 drew it. */
+        unsigned ny=20+row*2,na=(sc&0xfc)*256+(tx&31)+(ny&31)*32;
+        if((sc&1) && (tx&32)) na+=1024;
+        if((sc&2) && (ny&32)) na+=(sc&1)?2048:1024;
+        tile=(uint16_t)((r->vram[na&0x7fff]&~0x1c00)|palette);
+      } else {
+        static const char *const k_rows[2]={"KEY CONFIG ","BOSS RUSH  "};
+        tile=(uint16_t)(0x2000|palette|(unsigned char)k_rows[row-3][tx-10]);
+      }
+    }
+  }
+  if(!stage && layer==2 && MmxOptionsScreenActive() && ty>=8 && ty<=15 && tx<32) {
+    /* OPTION MODE: X1's KEY CONFIG. heading and six rows (tile rows 8..15)
+     * give way to DOUBLE TAP DASH and HOLD DASH. Each takes the palette X1
+     * gives its own row (SHOT, JUMP), so the selected one lights the same. */
+    unsigned row=ty==11?0:ty==13?1:2;
+    char text[33];memset(text,' ',32);text[32]=0;
+    if(row<2) {
+      MmxOptionsState o=MmxOptionsGetState();
+      const char *label=row?"HOLD DASH":"DOUBLE TAP DASH";
+      const char *value=row?(o.hold_dash?"ON":"OFF"):(o.no_double_tap?"OFF":"ON");
+      memcpy(text+6,label,strlen(label));memcpy(text+23,value,strlen(value));
+      unsigned ny=10+row,na=(sc&0xfc)*256+10+(ny&31)*32;
+      if((sc&2) && (ny&32)) na+=(sc&1)?2048:1024;
+      tile=(uint16_t)((r->vram[na&0x7fff]&0x3c00)|(unsigned char)text[tx]);
+    } else tile=(uint16_t)((tile&0x3c00)|' ');
   }
   if (layer == 0 && !stage) {
     int icon = weapon_menu_icon(x, y);
@@ -1904,6 +1936,11 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
   memset(&stats, 0, sizeof(stats)); stats.pieces = frame.piece_count;
   memset(door_cache, 0, sizeof(door_cache));
   memset(out, 0, (size_t)view.width * 224 * sizeof(*out));
+  if(frame_rush.mode==MMX_RUSH_OFF && frame_rush.menu==3) {
+    /* The title's KEY CONFIG page owns the whole picture. */
+    MmxKeyConfigDraw(out, view.width);
+    return true;
+  }
   if(frame_rush.mode==MMX_RUSH_FINISHED) {
     /* Own the whole page so native death flashes, HUD badges and the world
      * cannot bleed through the options-style results screen. */
@@ -1926,6 +1963,7 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
   bool menu = zero_menu || weapon_menu ||
       (!MmxWidePolicy_IsStageScene(frame.ram) && rush_pause_art_needed());
   bool zero_title = zero_title_menu();
+  bool options_screen = MmxOptionsScreenActive();
   bool stage = MmxWidePolicy_IsStageScene(frame.ram) && !menu;
   bool rush_hud = stage && frame_rush.loaded;
   view_dx=view_dy=0;
@@ -2121,7 +2159,7 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
     const Raster *r = &frame.lines[y]; Ppu p;
     memcpy(&p, r->registers, PPU_SAVESTATE_REGS_SIZE);
     if (beam_count) p.cgwsel = (p.cgwsel & 0xcf) | 0x20;
-    if ((p.bgmode & 7) != 1 || (!stage && !menu && !zero_title && !frame_rush.menu)) {
+    if ((p.bgmode & 7) != 1 || (!stage && !menu && !zero_title && !frame_rush.menu && !options_screen)) {
       memcpy(out + y * view.width + view.extra, frame.stock + y * 256, 256 * sizeof(*out));
       ++stats.fallback_lines; continue;
     }

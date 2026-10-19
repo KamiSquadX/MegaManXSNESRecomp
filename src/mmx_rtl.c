@@ -1,4 +1,5 @@
 #include "mmx_rtl.h"
+#include "mmx_key_config.h"
 #include "mmx_wide_policy.h"
 #include "mmx_renderer.h"
 #include "mmx_zero.h"
@@ -10,6 +11,7 @@
 #include "mmx_replay.h"
 #include "mmx_coop_view.h"
 #include "mmx_boss_rush.h"
+#include "mmx_options.h"
 #include "mmx_boss_rush_audio.h"
 #include "variables.h"
 #include "common_cpu_infra.h"
@@ -367,7 +369,7 @@ void mmx_host_yield(uint8_t countdown) {
 #include "snes/saveload.h"
 
 #define MMX_SAV_CHUNK_MAGIC   0x4D4D5854u  /* "MMXT" */
-#define MMX_SAV_CHUNK_VERSION 24u /* Boss Rush relocated-boss scratch RAM */
+#define MMX_SAV_CHUNK_VERSION 25u /* OPTION MODE dash options */
 
 typedef struct MmxSavChunk {
   uint32_t magic, version;
@@ -410,6 +412,8 @@ static MmxBossRushAudioState g_load_rush_audio;
 static MmxBossRushVisualState g_load_rush_visual;
 static MmxBossRushRosterState g_load_rush_roster;
 static MmxBossRushScratchState g_load_rush_scratch;
+static MmxOptionsState g_load_options;
+static bool g_load_options_ok;
 
 void MmxStateSaveExtra(struct SaveLoadInfo *sli) {
   MmxSavChunk c;
@@ -472,6 +476,8 @@ void MmxStateSaveExtra(struct SaveLoadInfo *sli) {
   sli->func(sli,&roster,sizeof(roster));
   MmxBossRushScratchState scratch=MmxBossRushScratchGetState();
   sli->func(sli,&scratch,sizeof(scratch));
+  MmxOptionsState options=MmxOptionsGetState();
+  sli->func(sli,&options,sizeof(options));
 }
 
 void MmxStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
@@ -576,7 +582,8 @@ void MmxStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
     size_t expected=(extension?sizeof(g_load_zero_extension):0)+(rush?rush_bytes:0)+
         (g_load_chunk.version>=22?sizeof(g_load_view_bounds):0)+
         (g_load_chunk.version>=23?sizeof(g_load_rush_roster):0)+
-        (g_load_chunk.version>=24?sizeof(g_load_rush_scratch):0);
+        (g_load_chunk.version>=24?sizeof(g_load_rush_scratch):0)+
+        (g_load_chunk.version>=25?sizeof(g_load_options):0);
     if(remaining!=expected) g_load_chunk_ok=0;
     if(g_load_chunk_ok && extension)
       sli->func(sli,g_load_zero_extension,sizeof(g_load_zero_extension));
@@ -608,6 +615,14 @@ void MmxStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
       sli->func(sli,&g_load_rush_scratch,sizeof(g_load_rush_scratch));
       if(!MmxBossRushScratchValidState(&g_load_rush_scratch)) g_load_chunk_ok=0;
     }
+    /* v25 adds OPTION MODE's dash options. Older states predate them and
+     * leave the player's current choice in place. */
+    g_load_options_ok=false;
+    if(g_load_chunk_ok && g_load_chunk.version>=25) {
+      sli->func(sli,&g_load_options,sizeof(g_load_options));
+      if(!MmxOptionsValidState(&g_load_options)) g_load_chunk_ok=0;
+      else g_load_options_ok=true;
+    }
     if(g_load_chunk_ok && rush && !MmxBossRushRosterMatches(&g_load_rush,&g_load_rush_roster))
       g_load_chunk_ok=0;
   }
@@ -626,6 +641,7 @@ void MmxOnStateLoaded(uint32_t version) {
   if(g_load_chunk_ok && g_load_complete) {
     MmxBossRushSetState(&g_load_rush);MmxBossRushRosterSetState(&g_load_rush_roster);
     MmxBossRushScratchSetState(&g_load_rush_scratch);
+    if(g_load_options_ok) MmxOptionsSetState(&g_load_options);
   } else MmxBossRushReset();
   MmxBossRushVisualState empty_visual={0};
   MmxBossRushVisualSetState(g_load_chunk_ok && g_load_complete?&g_load_rush_visual:&empty_visual);
@@ -1075,6 +1091,10 @@ void RunOneFrameOfGame(void) {
     }
   }
   cpu_trace_px_breadcrumb(&g_cpu, 0x2002, "before_Internal");
+#if !MMX_VARIANT_JP
+  MmxKeyConfigSimFrame(g_ram);
+  MmxOptionsRegisterHooks();
+#endif
   MmxBossRushFrame(g_ram,RtlGetPadState(0));
   if(MmxBossRushGetState().mode==MMX_RUSH_FINISHED) return;
   MmxKncBugfixTick(g_ram,RtlGetPadState(0),RtlGetPadState(1));

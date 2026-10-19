@@ -1,4 +1,5 @@
 #include "mmx_boss_rush.h"
+#include "mmx_key_config.h"
 #include "mmx_boss_rush_foreign.h"
 #include "mmx_cart_extension.h"
 #include "mmx_boss_rush_foreign_art.h"
@@ -671,9 +672,14 @@ void MmxBossRushHostFrame(void) {
   if(!registered && !warned) {warned=true;fprintf(stderr,"[mmx-rush] native hook registration failed: interpreter hook table is full\n");}
 #endif
 }
+/* The title's rows: X1's three, KEY CONFIG, then BOSS RUSH when the mod
+ * offers it. Five rows sit 16px higher than X1's so the last stays above
+ * the bottom edge; X stands beside the selected one. */
+static unsigned title_rows(void) {return MmxBossRushEnabled()?5:4;}
+static unsigned title_y(unsigned row) {return (title_rows()==5?150:166)+16*row;}
 static bool title(const uint8_t *r) {
   unsigned y=word(r+0xbb0);
-  return r[0xd1]==0 && r[0xba9]==2 && word(r+0xbad)==32 && y>=166 && y<=214;
+  return r[0xd1]==0 && r[0xba9]==2 && word(r+0xbad)==32 && y>=150 && y<=214;
 }
 static void equipment(uint8_t *r) {
   r[0x1f99]=0xff;r[0x1f9a]=32;r[0x1f98]=0x40;r[0xbcf]=0xa0;
@@ -698,10 +704,10 @@ static void load(uint8_t *r,bool coop) {
   if(title(r)) {
     /* Use the same mini charged shot and delay as the other native choices,
      * keeping the cursor and lettering on the fourth row until the fade. */
-    MmxBossRushState s=MmxBossRushGetState();s.menu=1;s.selection=3;
+    MmxBossRushState s=MmxBossRushGetState();s.menu=1;s.selection=4;
     MmxBossRushSetState(&s);
     r[0x3c]=0;r[0x39]=4;r[0x3b]=60;r[0xc01]=2;
-    memset(r+0xac,0,4);put(r+0xbb0,214);
+    memset(r+0xac,0,4);put(r+0xbb0,title_y(4));
   }
 }
 uint16_t MmxBossRushFilterInput(uint16_t input) {
@@ -790,34 +796,49 @@ void MmxBossRushFrame(uint8_t *r,uint16_t input) {
     }
   if(s.mode!=MMX_RUSH_OFF) MmxBossRushAudioTick();
   if(s.mode==MMX_RUSH_OFF) {
-    if(!MmxBossRushEnabled()) {
-      /* A launcher edit can disable the fourth row while it is selected.
-       * Return the native cursor to Option Mode before its three-row table
-       * runs again. Keep input history consistent with ordinary frames. */
-      if(s.menu && title(r) && s.selection==3) {
-        put(r+0xbb0,198);r[0x3c]=2;memset(r+0xac,0,4);
-      }
-      s.menu=0;s.selection=0;s.menu_input=input;MmxBossRushSetState(&s);return;
-    }
     if(!title(r)) {s.menu=0;s.menu_input=input;MmxBossRushSetState(&s);return;}
+    unsigned rows=title_rows();
     /* Old playtest snapshots may contain the removed mode submenu. */
-    if(s.menu==2) s.selection=3;
-    s.menu=1;
-    if(s.selection!=3) s.selection=(uint8_t)((word(r+0xbb0)-166)/16);
-    unsigned previous=s.selection;
-    if(pressed&SNES_PAD_UP) {
-      if(previous==0) s.selection=3;
-      else if(previous==3) s.selection=2;
-    } else if(pressed&(SNES_PAD_DOWN|SNES_PAD_SELECT)) {
-      if(previous==2) s.selection=3;
-      else if(previous==3) s.selection=0;
+    if(s.menu==2) {s.menu=1;s.selection=3;}
+    if(s.menu==3) {
+      /* KEY CONFIG is open. The page itself is the host's (MmxKeyConfig):
+       * the guest only holds the title, with X1's idle timer kept from
+       * starting the attract demo, until a seat signals the close. */
+      r[0x3b]=0xf0;r[0xab]=r[0xac]=0;
+      if(RtlGetPadExt(0)==MMX_EXT_CLOSE_KEY_CONFIG ||
+          RtlGetPadExt(1)==MMX_EXT_CLOSE_KEY_CONFIG) s.menu=1;
+      s.menu_input=input;MmxBossRushSetState(&s);return;
     }
-    if(previous==3 || s.selection==3) {
-      /* The native cursor table has three rows. Handle transitions touching
-       * our fourth row here, and synchronize its index when leaving it. */
-      memset(r+0xac,0,4);r[0x3c]=s.selection==3?2:s.selection;
-      put(r+0xbb0,166+16*s.selection);
-      if(s.selection==3 && (pressed&(SNES_PAD_START|SNES_PAD_A|SNES_PAD_Y))) {
+    if(!s.menu) {
+      /* Arriving: X1 placed X beside one of its own rows; adopt that row. */
+      unsigned y=word(r+0xbb0);
+      s.selection=(uint8_t)(y>=166 && y<214?(y-166)/16:0);
+      put(r+0xbb0,title_y(s.selection));
+    }
+    s.menu=1;
+    if(s.selection>=rows) {
+      /* A launcher edit can remove BOSS RUSH while it is selected. */
+      s.selection=rows-1;put(r+0xbb0,title_y(s.selection));
+    }
+    unsigned previous=s.selection;
+    /* This menu owns the cursor: X1's handler ($80:9271) only ever wraps
+     * its own three rows and moves X to their 4:3 positions. */
+    if(pressed&SNES_PAD_UP) s.selection=(uint8_t)((previous+rows-1)%rows);
+    else if(pressed&(SNES_PAD_DOWN|SNES_PAD_SELECT)) s.selection=(uint8_t)((previous+1)%rows);
+    r[0xac]&=(uint8_t)~0x2c;
+    if(s.selection!=previous) {
+      r[0x3c]=s.selection<3?s.selection:2;
+      put(r+0xbb0,title_y(s.selection));
+      r[0x3b]=0xf0; /* X1 restarts its idle timer on every move. */
+    }
+    if(s.selection>=3) {
+      /* X1 would confirm its own row 2 (Option Mode) on Start. */
+      bool confirm=(pressed&(SNES_PAD_START|SNES_PAD_A|SNES_PAD_Y))!=0;
+      r[0xab]=0;r[0xac]=0;
+      if(confirm && s.selection==3) {
+        s.menu=3;s.menu_input=input;MmxBossRushSetState(&s);return;
+      }
+      if(confirm && s.selection==4) {
         MmxBossRushSetState(&s);load(r,MmxCoopEnabled());return;
       }
     }

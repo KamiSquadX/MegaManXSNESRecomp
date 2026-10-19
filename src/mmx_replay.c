@@ -349,7 +349,8 @@ static uint32_t playback_begin(uint32_t inputs) {
       playback_rom_verified=true;
     }
   }
-  if(!playback_checkpointed || sscanf(line,"I %u %x %x %d %d",&frame,&word,&flags,&width,&peer)!=5 || flags>127 ||
+  unsigned ext=0;
+  if(!playback_checkpointed || sscanf(line,"I %u %x %x %d %d %x",&frame,&word,&flags,&width,&peer,&ext)<5 || flags>127 ||
       width<256 || width>MMX_RENDER_MAX_WIDTH || (width&1) || peer < -1 || peer>1) {
     error("invalid input record"); return inputs;
   }
@@ -362,6 +363,7 @@ static uint32_t playback_begin(uint32_t inputs) {
   if(flags&32) RtlEnableExtendedFrameTiming();
   if(!!(flags&32)!=rtl_apu_extended_frame_timing()) { error("frame timing mode differs"); return inputs; }
   MmxRendererSetPeerView(peer); playback_width=width;
+  RtlSetPadExt(0,(uint8_t)ext);RtlSetPadExt(1,(uint8_t)(ext>>8));
   MmxReplayViewport(&g_mmx_custom_view.width,&g_mmx_custom_view.extra);
   next_frame=frame+1; pending=true; return word;
 }
@@ -389,8 +391,11 @@ static uint32_t record_begin(uint32_t inputs) {
   generation=RtlStateGeneration();
   recorded_load_sequence=load_sequence;
   char input[160];
-  snprintf(input,sizeof(input),"I %u %08x %02x %d %d\n",frame,inputs,policy(),
-      g_mmx_custom_view.width,MmxRendererGetPeerView());
+  /* The trailing field is seats 0 and 1's extended controls (RtlGetPadExt);
+   * older recordings end before it and play with none. */
+  snprintf(input,sizeof(input),"I %u %08x %02x %d %d %04x\n",frame,inputs,policy(),
+      g_mmx_custom_view.width,MmxRendererGetPeerView(),
+      (unsigned)RtlGetPadExt(0)|(unsigned)RtlGetPadExt(1)<<8);
   if(!SnesReplayWriterLine(writer,input)) {
     error(SnesReplayWriterError(writer));return inputs;
   }

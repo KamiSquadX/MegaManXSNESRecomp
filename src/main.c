@@ -20,6 +20,8 @@
 #include "mmx_spc_player.h"
 #include "mmx_default_config.h"
 #include "mmx_netplay.h"
+#include "mmx_key_config.h"
+#include "mmx_options.h"
 #include "mmx_startup.h"
 #include "mmx_coop_trace.h"
 #include "mmx_coop.h"
@@ -54,7 +56,7 @@ static void MmxPrepareFrame(int dw, int dh, int *w, int *h) {
   /* A room has one logical field. Window size and each peer's offline pixel
    * preference cannot widen it. The offline setting is never overwritten. */
   SnesDisplayAspect aspect = SnesDisplayAspect_Clamp(MmxNetplayActive() ? 0 : g_config.display_aspect);
-  g_mmx_custom_renderer = !MMX_VARIANT_JP && (g_config.widescreen || MmxZeroEnabled() || MmxWeaponsEnabled() || MmxKncBugfixActive(0) || MmxKncBugfixActive(1) || MmxBossRushActive() || MmxBossRushGetState().menu || MmxRendererNeedsStormSkyRepair(g_ram));
+  g_mmx_custom_renderer = !MMX_VARIANT_JP && (g_config.widescreen || MmxZeroEnabled() || MmxWeaponsEnabled() || MmxKncBugfixActive(0) || MmxKncBugfixActive(1) || MmxBossRushActive() || MmxBossRushGetState().menu || MmxOptionsScreenActive() || MmxRendererNeedsStormSkyRepair(g_ram));
   g_mmx_custom_view = MmxRendererViewport(g_mmx_custom_aspect, dw, dh,
       aspect);
   if (!g_config.widescreen) {
@@ -159,6 +161,7 @@ static int MmxWindowWidth(int w) {
 static int s_benchmark_frames, s_benchmark_audio;
 static void MmxAfterConfig(void) {
 #if !MMX_VARIANT_JP
+  MmxOptionsLoadPreferences();
   /* The shared catalog now lives in mods/preloaded. Carry the player's old
    * activation state forward once, without replacing newer choices. */
   FILE *state = fopen("mods/preloaded/state.toml", "rb");
@@ -313,7 +316,8 @@ int MMX_DESKTOP_ENTRY(int argc, char **argv) {
     .window_base_width = MmxWindowWidth,
     .window_base_height = MmxDisplay_GetWindowBaseHeight,
     .after_config = MmxAfterConfig, .after_run_frame = MmxAfterFrame,
-    .configure_launcher = MmxNetplayConfigureLauncher,
+    .configure_launcher = MmxConfigureLauncher,
+    .map_seat_input = MmxKeyConfigMapSeat,
     .prepare_netplay = MmxNetplayPrepare,
     .netplay_ready = MmxNetplayReady,
     .on_shutdown = MmxShutdown,

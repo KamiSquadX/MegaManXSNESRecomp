@@ -139,6 +139,10 @@ static void rush_rhino_spread_checks(uint8_t *snapshot,size_t size,unsigned obje
   int found[4][2]={{0}};unsigned seen=0,age[8]={0};
   for(unsigned t=0;t<300 && seen!=0x0e;++t) {
     g_ram[penguin+5]=(uint8_t)(s.camera_x-128);g_ram[penguin+6]=(uint8_t)((s.camera_x-128)>>8);
+    /* A spread fires only into free projectile slots. Penguin is parked
+     * off-screen but may still throw ice (his choice follows the RNG); keep
+     * his projectiles out of the way so this case tests Rhino alone. */
+    for(unsigned d=0x1428;d<0x1628;d+=64) if(g_ram[d] && MmxBossRushOwner(d)==0) memset(g_ram+d,0,64);
     frame(0);rush_keep_players_alive();
     for(unsigned i=0;i<8;++i) {
       unsigned d=0x1428+i*64;
