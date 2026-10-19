@@ -151,6 +151,17 @@ static void rush_title_navigation_checks(uint8_t *snapshot,size_t cap) {
   RtlSetPadExt(0,MMX_EXT_CLOSE_KEY_CONFIG);frame(0);RtlSetPadExt(0,0);
   check(MmxBossRushGetState().menu==1 && MmxBossRushGetState().selection==3,
       "a seat's close signal returns to the KEY CONFIG row");
+  bool second_shot=false;
+  /* After a pause on the title, a confirmation held over several frames
+   * (menu confirm is Y + Start): X must be able to fire again. */
+  for(unsigned t=0;t<120;++t) {
+    frame(t<6?0:t<12?SNES_PAD_Y|SNES_PAD_START:0);
+    for(unsigned d=0x1228;d<0x1428;d+=64) second_shot|=g_ram[d]!=0;
+    if(t==30) check(MmxBossRushGetState().menu==4,"a second, held confirmation plays the shot again");
+  }
+  check(second_shot,"the second confirmation fires X's title shot too");
+  check(MmxBossRushGetState().menu==3,"the second confirmation opens the page");
+  RtlSetPadExt(0,MMX_EXT_CLOSE_KEY_CONFIG);frame(0);RtlSetPadExt(0,0);
   frame(SNES_PAD_START);zero_replay(30);
   check(MmxBossRushGetState().menu==4,"a second confirmation plays the shot again");
   zero_replay(40);
@@ -158,6 +169,16 @@ static void rush_title_navigation_checks(uint8_t *snapshot,size_t cap) {
       "Start on KEY CONFIG never confirms X1's Option Mode underneath");
   RtlSetPadExt(1,MMX_EXT_CLOSE_KEY_CONFIG);frame(0);RtlSetPadExt(1,0);
   check(MmxBossRushGetState().menu==1,"either seat can close the page");
+  /* Backing out and choosing another row works as X1's own: its shot, then
+   * the title gives way (here to Option Mode). */
+  zero_replay(20);frame(SNES_PAD_UP);zero_replay(12);
+  check(MmxBossRushGetState().selection==2,"the cursor leaves KEY CONFIG after closing it");
+  frame(SNES_PAD_START);
+  bool option_shot=false;
+  for(unsigned t=0;t<150 && MmxBossRushGetState().menu;++t) {
+    frame(0);for(unsigned d=0x1228;d<0x1428;d+=64) option_shot|=g_ram[d]!=0;
+  }
+  check(option_shot && !MmxBossRushGetState().menu,"Option Mode fires X's shot and leaves the title after KEY CONFIG");
   check(RtlLoadSnapshotFromMemory(snapshot,saved),"title cursor restores after navigation checks");
   puts("MMX BOSS RUSH TITLE NAVIGATION CHECKS PASSED");
 }

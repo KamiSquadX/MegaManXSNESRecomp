@@ -804,12 +804,14 @@ void MmxBossRushFrame(uint8_t *r,uint16_t input) {
       /* KEY CONFIG confirmed: X1's confirmation state ($39 = 4) plays X's
        * shot for its full 60 frames, as on X1's own rows. On the frame its
        * countdown would start the row X1 holds, return to the idle menu
-       * state (2) and open the page instead. The shot is gone by then;
-       * clear its slots so idle (which never moves it) cannot keep one. */
+       * state (2) and open the page instead. The shot has left by then.
+       * X1 always leaves the title here, so it never unwinds the shot: X
+       * keeps his firing animation ($0BBB 26, standing is 50) and the shot
+       * latch $1F0D that $81:9435 refuses to fire past. Unwind both, or
+       * the next confirmation's shot never comes. */
       r[0xab]=r[0xac]=0;
       if(r[0x3b]<=1 || r[0x3b]>60) {
-        s.menu=3;r[0x39]=2;r[0x3b]=0xf0;
-        memset(r+0x1228,0,0x200);
+        s.menu=3;r[0x39]=2;r[0x3b]=0xf0;r[0xbbb]=0x50;r[0x1f0d]=0;
       }
       s.menu_input=input;MmxBossRushSetState(&s);return;
     }
