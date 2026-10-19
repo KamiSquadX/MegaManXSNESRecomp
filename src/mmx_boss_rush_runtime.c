@@ -802,11 +802,15 @@ void MmxBossRushFrame(uint8_t *r,uint16_t input) {
     if(s.menu==2) {s.menu=1;s.selection=3;}
     if(s.menu==4) {
       /* KEY CONFIG confirmed: X1's confirmation state ($39 = 4) plays X's
-       * shot while counting $3B down. Before it would start the row it
-       * thinks is chosen, return to its idle menu state (2) and open the
-       * page. */
+       * shot for its full 60 frames, as on X1's own rows. On the frame its
+       * countdown would start the row X1 holds, return to the idle menu
+       * state (2) and open the page instead. The shot is gone by then;
+       * clear its slots so idle (which never moves it) cannot keep one. */
       r[0xab]=r[0xac]=0;
-      if(r[0x39]!=4 || r[0x3b]<=60-36) {s.menu=3;r[0x39]=2;r[0x3b]=0xf0;}
+      if(r[0x3b]<=1 || r[0x3b]>60) {
+        s.menu=3;r[0x39]=2;r[0x3b]=0xf0;
+        memset(r+0x1228,0,0x200);
+      }
       s.menu_input=input;MmxBossRushSetState(&s);return;
     }
     if(s.menu==3) {

@@ -136,11 +136,14 @@ static void rush_title_navigation_checks(uint8_t *snapshot,size_t cap) {
   frame(SNES_PAD_START);
   check(MmxBossRushGetState().menu==4,"KEY CONFIG's confirmation waits for X's title shot");
   bool key_config_shot=false;
-  for(unsigned t=0;t<40 && MmxBossRushGetState().menu==4;++t) {
+  unsigned key_config_wait=0;
+  for(unsigned t=0;t<90 && MmxBossRushGetState().menu==4;++t,++key_config_wait) {
     frame(0);
     for(unsigned d=0x1228;d<0x1428;d+=64) key_config_shot|=g_ram[d]!=0;
   }
   check(key_config_shot,"KEY CONFIG's confirmation fires X's title shot");
+  check(key_config_wait>=55,"the page waits for the whole shot, as X1's rows do");
+  for(unsigned d=0x1228;d<0x1428;d+=64) check(!g_ram[d],"no title shot outlives the confirmation");
   check(MmxBossRushGetState().menu==3,"KEY CONFIG opens from the fourth title row after the shot");
   for(unsigned t=0;t<600;++t) frame(0);
   check(MmxBossRushGetState().menu==3 && g_ram[0xd1]==0 && MmxBossRushGetState().mode==MMX_RUSH_OFF,
@@ -148,7 +151,9 @@ static void rush_title_navigation_checks(uint8_t *snapshot,size_t cap) {
   RtlSetPadExt(0,MMX_EXT_CLOSE_KEY_CONFIG);frame(0);RtlSetPadExt(0,0);
   check(MmxBossRushGetState().menu==1 && MmxBossRushGetState().selection==3,
       "a seat's close signal returns to the KEY CONFIG row");
-  frame(SNES_PAD_START);zero_replay(40);
+  frame(SNES_PAD_START);zero_replay(30);
+  check(MmxBossRushGetState().menu==4,"a second confirmation plays the shot again");
+  zero_replay(40);
   check(MmxBossRushGetState().menu==3 && g_ram[0xd1]==0,
       "Start on KEY CONFIG never confirms X1's Option Mode underneath");
   RtlSetPadExt(1,MMX_EXT_CLOSE_KEY_CONFIG);frame(0);RtlSetPadExt(1,0);
