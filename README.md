@@ -157,6 +157,13 @@ Windows diagnostics are saved beside the executable in
 If a crash produced `crash_report_*.json` or `crash_minidump_*.dmp`, include
 those too. Grab the reports before running the game again.
 
+On Linux, check `logs/` beside the AppImage or compiled executable. If that
+directory is read-only, the startup log falls back to
+`$XDG_STATE_HOME/MegaManXSNESRecomp/logs` (normally
+`~/.local/state/MegaManXSNESRecomp/logs`), then `/tmp/MegaManXSNESRecomp`.
+Set `MMX_REPLAY_DIR` to an existing writable folder to choose where replay
+segments and their sidecars are recorded.
+
 Netplay disconnect details and long application stalls are logged automatically
 in the session log. They distinguish a received peer goodbye from a timeout,
 report the age of the last peer packet, and identify long gaps in network
