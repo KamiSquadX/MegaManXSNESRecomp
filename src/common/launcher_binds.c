@@ -481,7 +481,7 @@ static const char* snes_gamepad_config_key(int player) {
 }
 
 /* The modern pad's extras live on their own [GamepadMap] line, in keybinds
- * order (L2, R2, L3, R3, R.S. Up, Down, Left, Right), so the twelve-entry
+ * order (L2, R2, L3, R3, R-Stick Up, Down, Left, Right), so the twelve-entry
  * Controls line every SNES build reads stays exactly as it was. */
 static const char* const kSnesGamepadDefaultExt[LNG_SNES_EXT_COUNT] = {
     "L2", "R2", "L3", "R3", "RsUp", "RsDown", "RsLeft", "RsRight",
@@ -608,10 +608,10 @@ static void snes_gamepad_label(const char* token, char* out, size_t cap) {
     if (token_eq(token, "R2"))        { copy_str(out, cap, "R2"); return; }
     if (token_eq(token, "L3"))        { copy_str(out, cap, "L3"); return; }
     if (token_eq(token, "R3"))        { copy_str(out, cap, "R3"); return; }
-    if (token_eq(token, "RsUp"))      { copy_str(out, cap, "R.S. Up"); return; }
-    if (token_eq(token, "RsDown"))    { copy_str(out, cap, "R.S. Down"); return; }
-    if (token_eq(token, "RsLeft"))    { copy_str(out, cap, "R.S. Left"); return; }
-    if (token_eq(token, "RsRight"))   { copy_str(out, cap, "R.S. Right"); return; }
+    if (token_eq(token, "RsUp"))      { copy_str(out, cap, "R-Stick Up"); return; }
+    if (token_eq(token, "RsDown"))    { copy_str(out, cap, "R-Stick Down"); return; }
+    if (token_eq(token, "RsLeft"))    { copy_str(out, cap, "R-Stick Left"); return; }
+    if (token_eq(token, "RsRight"))   { copy_str(out, cap, "R-Stick Right"); return; }
     copy_str(out, cap, token);
 }
 

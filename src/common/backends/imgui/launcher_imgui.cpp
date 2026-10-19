@@ -6325,7 +6325,7 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
         // vocab overlaps the bind-chip button next to it.
         //
         // Rows beside the buttons (spec.pad_bind_side) size their own label
-        // column: they are not grid cells, and a long side label ("R.S.
+        // column: they are not grid cells, and a long side label ("R-Stick
         // Right") must not widen every column of the grid.
         float label_col_w = px(70.0f), side_label_w = px(70.0f);
         const int side_first = (spec.pad_bind_order && spec.pad_bind_side > 0)
@@ -6587,7 +6587,7 @@ void draw_controller_config_view(LauncherModel* m, const LauncherTheme& th) {
              * under another in the grid's last column, level with Auto Map. */
             const ImVec2 after_buttons = ImGui::GetCursorScreenPos();
             /* Their chips line up under the last column's chips; a longer
-             * label ("R.S. Down") reaches back into the empty space beside. */
+             * label ("R-Stick Down") reaches back into the empty space beside. */
             ImGui::SetCursorScreenPos(ImVec2(
                 last_col_x + label_col_w - side_label_w, below_grid.y));
             ImGui::BeginGroup();

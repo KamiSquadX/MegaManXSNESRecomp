@@ -208,11 +208,21 @@ static void write_defaults(const char *path) {
     printf("[Keybinds] Wrote %s\n", path);
 }
 
+/* A section written before the right-stick slots existed carries the old
+ * launcher's "r3 = None". It never chose that: R3's default is Keypad 5
+ * now, so such a section takes it. A section that names rs_* is current. */
+static void upgrade_r3(PlayerBinds *pb, int current_format) {
+    if (!current_format && pb->r3 == SDL_SCANCODE_UNKNOWN) pb->r3 = SDL_SCANCODE_KP_5;
+}
+
 static void load_ini(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) return;
 
     PlayerBinds *current = NULL;
+    PlayerBinds *sections[16];
+    int current_format[16];
+    int section_count = 0, section_index = -1;
     char line[256];
     while (fgets(line, sizeof(line), f)) {
         trim(line);
@@ -225,6 +235,12 @@ static void load_ini(const char *path) {
             current = NULL;
             if (!strcmp(section, "player1"))      current = &s_binds.p1;
             else if (!strcmp(section, "player2")) current = &s_binds.p2;
+            section_index = -1;
+            if (current && section_count < 16) {
+                section_index = section_count++;
+                sections[section_index] = current;
+                current_format[section_index] = 0;
+            }
             continue;
         }
 
@@ -236,6 +252,7 @@ static void load_ini(const char *path) {
         for (char *c = key; *c; c++) *c = (char)tolower((unsigned char)*c);
 
         if (!current) continue;
+        if (!strncmp(key, "rs_", 3) && section_index >= 0) current_format[section_index] = 1;
 
         for (const ButtonDef *bd = s_buttons; bd->name; bd++) {
             if (!strcmp(key, bd->name)) {
@@ -246,6 +263,7 @@ static void load_ini(const char *path) {
         }
     }
     fclose(f);
+    for (int i = 0; i < section_count; ++i) upgrade_r3(sections[i], current_format[i]);
     printf("[Keybinds] Loaded %s\n", path);
 }
 

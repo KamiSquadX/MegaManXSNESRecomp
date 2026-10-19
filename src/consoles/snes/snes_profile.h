@@ -48,7 +48,7 @@ static const ButtonDef kSnesModernPadButtons[] = {
     { "A", 4 }, { "B", 5 }, { "X", 6 }, { "Y", 7 },
     { "L", 8 }, { "R", 9 }, { "Start", 10 }, { "Select", 11 },
     { "L2", 12 }, { "R2", 13 }, { "L3", 14 }, { "R3", 15 },
-    { "R.S. Up", 16 }, { "R.S. Down", 17 }, { "R.S. Left", 18 }, { "R.S. Right", 19 },
+    { "R-Stick Up", 16 }, { "R-Stick Down", 17 }, { "R-Stick Left", 18 }, { "R-Stick Right", 19 },
 };
 #define LNG_SNES_MODERN_PAD_BUTTON_COUNT \
     ((int)(sizeof(kSnesModernPadButtons) / sizeof(kSnesModernPadButtons[0])))
@@ -60,7 +60,7 @@ static const int kSnesModernGamepadBindOrder[LNG_SNES_MODERN_PAD_BUTTON_COUNT] =
     4, 5, 6, 7,          // A B X Y
     8, 9, 10, 11,        // L R Start Select
     12, 13, 14, 15,      // L2 R2 L3 R3
-    16, 17, 18, 19,      // R.S. Up Down Left Right (beside the buttons)
+    16, 17, 18, 19,      // R-Stick Up Down Left Right (beside the buttons)
 };
 #define LNG_SNES_MODERN_GAMEPAD_BIND_COLS 4
 #define LNG_SNES_MODERN_GAMEPAD_BIND_SIDE 4
