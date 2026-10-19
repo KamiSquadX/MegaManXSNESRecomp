@@ -94,6 +94,7 @@ IMMEDIATE = {0x09d8: 0x0ba8}
 # below it. The zero area only ever reads as zero (ROM writes are ignored),
 # so globals that share its low byte may share a slot.
 PAD_SHIMS, PAD_DATA, PAD_ZERO = 0x86fa80, 0x86fb00, 0x86fe40
+SLOT_TABLES = 0x3c8000  # 256 bytes per source slot table
 ZERO_MASK = 0xff
 
 
@@ -101,7 +102,7 @@ class Game:
     """One source game's engine as relocated bosses see it."""
     def __init__(self, number, sha256, banks, helpers, relocated, shims, ram, zero,
                  zero_long, player_states, immediate, init_fields, sound_upload, sfx,
-                 long_keep=(), data_banks=(), anim_directory=None, long_const=None):
+                 long_keep=(), data_banks=(), anim_directory=None, slot_tables=None):
         self.number, self.sha256, self.banks = number, sha256, banks
         self.helpers, self.relocated, self.shims = helpers, relocated, shims
         self.ram, self.zero, self.zero_long = ram, zero, zero_long
@@ -115,9 +116,11 @@ class Game:
         # 3-byte entries (pointer, bank) per sprite set; the bank byte of each
         # set the boss uses is rewritten to the relocated copy of that bank.
         self.anim_directory = anim_directory
-        # Long RAM bytes read as a constant: each gets a byte after the
-        # boss's $86 data tables holding the value.
-        self.long_const = dict(long_const or {})
+        # Per-stage tables indexed by graphics slot (long RAM base -> {slot:
+        # value}), read directly ($7F:8345) or indexed ($7F:8300,x). Each is
+        # copied whole (256 slots, 0 where the room loads nothing, as the
+        # stage loader clears them) to SLOT_TABLES in unused padding bank $3C.
+        self.slot_tables = dict(slot_tables or {})
 
 
 def x3_init_fields(rom, x_class):
@@ -208,13 +211,14 @@ X2_RAM.update({0x1f2d: 0x1f1b,   # last hit's direction (X1 $84:9EB7)
 # darkening of his lightning ($00C9-$00CD color math, $0962-$0968, $08DF).
 X2_ZERO = set(ZERO) | {0x1fad, 0x1fc5, 0x1fd9, 0x00c9, 0x00ca, 0x00cb, 0x00cc,
                        0x00cd, 0x08df, 0x0a0d} | set(range(0x0962, 0x0969))
-# Per-stage sprite slot tables ($7F:8200 VRAM bases, $7F:8300 attributes)
-# read as zero.
-X2_ZERO_LONG = set(ZERO_LONG) | {0x7f8245, 0x7f8246, 0x7f8200, 0x7f8300}
-# Except his slots' OBJ attributes ($7F:8345/$8346), which his shots and
-# whip build +$11 from: use the body's priority 2, palette 4 (see
-# x2_init_fields); 0 hides them behind the arena and reads as a hit flash.
-X2_LONG_CONST = {0x7f8345: 0x29, 0x7f8346: 0x29}
+X2_ZERO_LONG = set(ZERO_LONG)
+# The stage's sprite slot tables as his room loads them ($2A:B2D4 stage 12):
+# slot $45 (body) at VRAM $1000, slot $46 (vine, lightning) at $0480, both
+# with palette list $9E from OBJ palette 4. $7F:8200 holds a slot's tile
+# base (+$18), $7F:8300 its attributes (+$11: priority 2, palette 4, and
+# bit 0 for VRAM $1000's upper 256 tiles). The renderer draws each object
+# from its base and palette as X2's sprite builder does.
+X2_SLOT_TABLES = {0x7f8200: {0x45: 0x00, 0x46: 0x48}, 0x7f8300: {0x45: 0x29, 0x46: 0x28}}
 
 
 def x2_init_fields(rom, x_class):
@@ -232,7 +236,7 @@ X2_LONG_KEEP = set(range(0x7fcd90, 0x7fcd97))
 
 X2 = Game(2, X2_SHA256, X2_BANKS, X2_HELPERS, X2_RELOCATED, X2_SHIMS, X2_RAM, X2_ZERO,
           X2_ZERO_LONG, PLAYER_STATES, IMMEDIATE, x2_init_fields, 0x00849d, (0x00851e,),
-          X2_LONG_KEEP, data_banks={0x2f}, anim_directory=0x2fa000, long_const=X2_LONG_CONST)
+          X2_LONG_KEEP, data_banks={0x2f}, anim_directory=0x2fa000, slot_tables=X2_SLOT_TABLES)
 
 SPONGE = Boss('sponge', 13, 0x049a29, {0x10: 0x03d5c9}, 0x23,
               # $86 tables: his hitboxes ($C989-$C9A6), attack choice,
@@ -345,11 +349,16 @@ def build(rom, boss):
             # pointer moves so base + index lands on the copy.
             bases[entry[2] & 0xffff] = ((cursor & 0xffff) - ((start - entry[2]) & 0xffff)) & 0xffff
         cursor += length
-    const_at = {}
-    for address, value in sorted(game.long_const.items()):
-        const_at[address] = cursor
-        blobs.append((cursor, [value]))
-        cursor += 1
+    slot_at = {}  # table base -> copy
+    for n, (base, values) in enumerate(sorted(game.slot_tables.items())):
+        slot_at[base] = SLOT_TABLES + n * 0x100
+        blobs.append((slot_at[base], [values.get(slot, 0) for slot in range(0x100)]))
+
+    def slot_target(address, mode):
+        for base, copy in slot_at.items():
+            if base <= address < base + 0x100 and (mode == 'long' or address == base):
+                return copy + address - base
+        return None
     if cursor > PAD_END:
         errors.append('data tables overflow the $86 padding')
 
@@ -420,8 +429,8 @@ def build(rom, boss):
         elif md in ('long', 'long,x'):
             if v in game.long_keep:
                 pass
-            elif v in const_at:
-                patch(3, const_at[v])
+            elif slot_target(v, md) is not None:
+                patch(3, slot_target(v, md))
             elif v in ZERO_LONG:
                 patch(3, PAD_ZERO + (v & ZERO_MASK))
             elif bank_map_(v) is not None:

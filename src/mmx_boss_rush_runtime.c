@@ -390,6 +390,14 @@ static void foreign_effect_hook(CpuState *cpu,uint32_t pc) {
   MmxBossRushBoss b=MmxBossRushGetState().bosses[owner];
   if(!b.phase || MmxBossRushNative(b.id)) return;
   uint32_t controller=MmxBossRushForeignEffectChild(b.id,g_ram[cpu->D+10]);if(!controller) return;
+  if(!MmxBossRushForeignOwnEffect(b.id,g_ram+cpu->D)) {
+    /* An X1 effect of the boss's own class (e.g. ceiling rubble from X1's
+     * terrain helper): its source game shows none, and its art is not
+     * loaded. Free it and skip the update. */
+    memset(g_ram+cpu->D,0,32);
+    interp_bridge_pre_opcode_redirect((pc&0xff0000)|((pc+3)&0xffff));
+    return;
+  }
   stack_push(cpu,(pc+2)&0xffff,2);
   stack_push(cpu,pc>>16,1);stack_push(cpu,MMX_RUSH_STUB_RTS-1,2);
   interp_bridge_pre_opcode_redirect(controller);

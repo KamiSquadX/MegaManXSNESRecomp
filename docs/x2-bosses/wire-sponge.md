@@ -38,12 +38,39 @@ is the same convention, so X2 code takes the same X1 patches as X3 code.
 | Children | projectile class `$10` → `$03:D5C9` (vine and lightning bolts); effect class `$1F` → `$03:ECBE` (whip segments); effect class `$2B` → `$01:F068` (split halves, variants `$52`/`$53`, table `$86:EB38`) |
 | Profiles (`+$28`) | `$09` normal (Sonic Slicer `$0B`/`$14` is the weakness), `$05` flash, `$03` init; children `$03`, `$02`, `$0A` (deflects everything but Sonic Slicer) |
 
-**Spawn.** X2's class init `$00:DA22` also copies his graphics slot's OBJ
-attributes from `$7F:8300` into `+$11`. Rush has no X2 slot table, so the
-init shim writes `$29` (priority 2, palette 4) as Rhino's own init does:
-with 0 he drew behind the arena and counted as a permanent hit flash
-(found in the first playtest, 2026-10-18). His children copy `+$11` from
-him.
+**Graphics.** His room's stage list (`$2A:B2D4`, stage 2 checkpoint 7 and
+the refights) loads two slots, both with palette list `$9E` (48 colors,
+OBJ palettes 4-6):
+
+| Slot | Resource / VRAM | `+$18` / `+$11` | Used by |
+| --- | --- | --- | --- |
+| `$45` | `$45` at `$1000` (tile `$100`) | `$00` / `$29` | body, whip, seeds, halves |
+| `$46` | `$46` at `$0480` (tile `$48`) | `$48` / `$28` | vine and lightning pieces |
+
+X2 builds `+$18`/`+$11` from the stage's slot tables `$7F:8200`/`$7F:8300`
+(class init `$00:DA22`, his children, the halves). Rush copies both tables
+whole to padding bank `$3C` (`$3C:8000`, `$3C:8100`; 0 for slots his room
+does not load, as the stage loader clears them), and the init shim writes
+`+$11` = `$29`. The renderer models X2's sprite VRAM: each resource at its
+tile, an object's tiles from its own base (attribute bit 0 selects the
+upper 256 tiles, `+$18` adds to the tile; a piece's bit 0 flips the half)
+and its colors from its own palette (4-6). His lightning bolt alternates
+palette 6 (cyan) and palette 5 (a dark silhouette) on purpose.
+
+Only objects that asked to be drawn this frame are drawn: X1's object
+loops clear `+$0E` bit 7 before each update and `$82:80B4` sets it. X2
+hides parts of him that way, e.g. his vine while it lowers and the vine
+below him while he climbs.
+
+X1's terrain helper (called for his vine) spawns X1 rubble, class `$2B`
+like his halves, in his seat when the vine hits the ceiling. An effect of
+his classes is his own only with his set `$3E` or, before its first update,
+one of his spawn variants (whip `$00`-`$0E`, halves `$52`/`$53`); Rush frees
+the rest, which X2 never shows in his room.
+
+Playtests found each of these: with `+$11` = 0 he drew behind the arena as
+a permanent hit flash; his attacks then read body tiles and the vine drew
+full length; the rubble ran his halves code and drew fragments of his face.
 
 **Entrance.** He drops from the top of X2's 256-pixel room
 (`cam_y & $1F00`, read at `$04:9ADB`) while his vine lowers: the segment
@@ -104,6 +131,7 @@ X2 Mavericks pack has loaded the X2 ROM.
 
 ## Not done
 
-- The lightning attack's screen darkening is dropped.
-- His alternate palettes are not used.
+- The lightning attack's screen darkening is dropped: X1 shares the color
+  math shadows `$C9`/`$CA`, but Rush keeps them private per seat so a boss's
+  screen effects cannot leak into the other's; his bolt still flickers.
 - Extra X1/X2/X3 weaknesses come once all 24 bosses exist.

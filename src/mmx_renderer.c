@@ -2078,25 +2078,34 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
     const MmxForeignPose *pose;const uint16_t *colors;
     int x,y;bool flip,flash;unsigned z;
   } ForeignSprite;
-  ForeignSprite foreign[32];unsigned foreign_count=0;bool foreign_drawn[128]={false};
+  ForeignSprite foreign[64];unsigned foreign_count=0;bool foreign_drawn[128]={false};
   if(stage && frame_rush.mode==MMX_RUSH_PLAYING) {
-    for(unsigned d=0xe68;d<0x1d08 && foreign_count<32;d+=d<0x1628?64:32) {
+    for(unsigned d=0xe68;d<0x1d08 && foreign_count<64;d+=d<0x1628?64:32) {
       if(d==0x1228) d=0x1428;
       if(d==0x1628) d=0x1928;
       unsigned owner=frame_rush.owner[(d-0xe68)/32];
       if(!frame.ram[d] || !owner || owner>2) continue;
       unsigned id=frame_rush.bosses[owner-1].id;
       if(MmxBossRushNative(id)) continue;
-      if(d>=0x1928 && !MmxBossRushForeignArtEffectClass(id,frame.ram[d+10])) continue;
-      const MmxForeignPose *pose=MmxBossRushForeignPose(id,frame.ram[d+0x16],frame.ram[d+0x17]&0x7f);
+      if(d>=0x1928 && !MmxBossRushForeignOwnEffect(id,frame.ram+d)) continue;
+      /* Only parts its code asked to draw: X1's object loops clear +$0E bit 7
+       * before each update and $82:80B4 sets it (X2 hides parts of Wire
+       * Sponge, e.g. his vine while it lowers, by not asking). */
+      if(!(frame.ram[d+0x0e]&0x80)) continue;
+      /* Tiles from the object's own base (attribute bit 0, +$18) and colors
+       * from its own palette, as its source game's sprite builder does. */
+      unsigned attributes=frame.ram[d+0x11],base=(attributes&1)<<8|frame.ram[d+0x18];
+      const MmxForeignPose *pose=MmxBossRushForeignObjectPose(id,frame.ram[d+0x16],frame.ram[d+0x17]&0x7f,base);
       const uint16_t *colors=MmxBossRushForeignColors(id);
+      unsigned palette=(attributes>>1)&7;
+      palette=palette>=4 && palette-4<MmxBossRushForeignPalettes(id)?palette-4:0;
+      if(colors) colors+=palette*16;
       /* Private palette effects (Rhino's drill-charge rotation and fade). */
       unsigned seat=owner-1;
-      if(colors && frame_rush_visual.initialized[seat] &&
+      if(colors && !palette && frame_rush_visual.initialized[seat] &&
           frame_rush_visual.generation[seat]==frame_rush.bosses[seat].generation)
         colors=frame_rush_visual.colors[seat];
       if(!pose || !colors) continue;
-      unsigned attributes=frame.ram[d+0x11];
       foreign_drawn[(d-0xe68)/32]=true;
       foreign[foreign_count++]=(ForeignSprite){pose,colors,
           (int16_t)(word(frame.ram,d+5)-view_camera(frame.ram,0x1e4d)),
@@ -2201,14 +2210,19 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       }
       if(frame_rush.mode==MMX_RUSH_PLAYING && !frame.expand && s.object>=0xe68 && s.object<0x1d08 &&
           frame_rush.owner[(s.object-0xe68)/32] && !oam_match) continue;
-      /* Relocated bodies are drawn above from their own source art. */
-      /* Effects only when drawn there: X1-native effects a relocated boss
-       * spawns (dust, explosions) keep their own art. */
+      /* Relocated bodies are drawn above from their own source art, and so
+       * are their own effect classes (X1's layout tables do not know their
+       * sets); X1-native effects a relocated boss spawns keep their own art. */
       if(foreign_count && frame_rush.mode==MMX_RUSH_PLAYING && s.object>=0xe68 && s.object<0x1628) {
         unsigned owner=frame_rush.owner[(s.object-0xe68)/32];
         if(owner && owner<=2 && !MmxBossRushNative(frame_rush.bosses[owner-1].id)) continue;
       }
-      if(stage && s.object>=0x1928 && s.object<0x1d08 && foreign_drawn[(s.object-0xe68)/32]) continue;
+      if(stage && frame_rush.mode==MMX_RUSH_PLAYING && s.object>=0x1928 && s.object<0x1d08) {
+        unsigned owner=frame_rush.owner[(s.object-0xe68)/32];
+        if(foreign_drawn[(s.object-0xe68)/32] || (owner && owner<=2 &&
+            !MmxBossRushNative(frame_rush.bosses[owner-1].id) &&
+            MmxBossRushForeignArtEffectClass(frame_rush.bosses[owner-1].id,frame.ram[s.object+10]))) continue;
+      }
       /* Match original OAM before reprojection. HUD and native script panels
        * keep screen coordinates; world pieces use the selected peer origin. */
       if(stage) {s.x-=view_dx;s.y-=view_dy;}

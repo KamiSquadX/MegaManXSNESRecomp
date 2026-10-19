@@ -2,6 +2,7 @@
 #include "mmx_boss_rush.h"
 #include "mmx_cart_extension.h"
 #include "mmx_boss_rush_audio.h"
+#include "mmx_boss_rush_foreign_art.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -13,6 +14,8 @@ typedef struct MmxRelocCopy {uint32_t source,dest;uint16_t size;} MmxRelocCopy;
 typedef struct MmxRelocBlob {uint32_t at;uint16_t offset,size;} MmxRelocBlob;
 typedef struct MmxRelocPatch {uint32_t at;uint8_t size;uint32_t expected,value;} MmxRelocPatch;
 typedef struct MmxRelocChild {uint8_t kind;uint32_t controller;} MmxRelocChild;
+/* See MmxBossRushForeignArtSetEffectFilter. */
+typedef struct MmxRelocEffectFilter {uint8_t kind,set,first,last;} MmxRelocEffectFilter;
 #include "mmx_boss_rush_x3_rhino.inc"
 #include "mmx_boss_rush_x2_sponge.inc"
 #ifndef MMX_SPONGE_ENTRY_Y
@@ -43,6 +46,7 @@ typedef struct MmxRelocBoss {
   const MmxBossRushRoomRead *room_reads;size_t room_read_count;
   uint8_t death_field,death_value,death_frames; /* own death sequence */
   const MmxBossRushPoke *pokes;size_t poke_count;
+  const MmxRelocEffectFilter *effect_filters;size_t effect_filter_count;
 } MmxRelocBoss;
 #define COUNT(a) (sizeof(a)/sizeof(*(a)))
 /* X1 shot classes: weapon n fires class $0F-n (Homing Torpedo $0E, Fire
@@ -93,6 +97,10 @@ static const MmxBossRushRoomRead k_sponge_rooms[]={{0xb59adb,1,MMX_SPONGE_ENTRY_
  * waited forever and he never left his entrance. Landing ($04:9BD5) lowers
  * the rest; the vine must not arrive sooner, while his landing pose plays. */
 static const MmxBossRushPoke k_sponge_pokes[]={{0xb59bd5,0x7fcd90,0}};
+/* His whip segments ($1F, variants $00-$0E) and split halves ($2B, variants
+ * $52/$53) use his set $3E. X1's terrain helper spawns X1 rubble ($2B) in his
+ * seat when his vine hits the ceiling; X2 shows none there. */
+static const MmxRelocEffectFilter k_sponge_effect_filters[]={{0x1f,0x3e,0x00,0x0e},{0x2b,0x3e,0x52,0x53}};
 static const MmxRelocBoss kBosses[]={
   {"TUNNEL RHINO",3,k_rhino_roster_id,k_rhino_body,2,4,
    k_rhino_banks,COUNT(k_rhino_banks),k_rhino_copies,COUNT(k_rhino_copies),
@@ -103,7 +111,7 @@ static const MmxRelocBoss kBosses[]={
    /* X3 $13:F7D6 rotates OBJ colors 1-15; $13:F7FC fades them back. */
    0x33f7d6,0x33f7fc,k_rhino_midline,COUNT(k_rhino_midline),
    k_rhino_spawns,COUNT(k_rhino_spawns),k_rhino_child_guards,COUNT(k_rhino_child_guards),
-   k_rhino_effect_children,k_rhino_effect_child_count,0,0,0,0,NULL,0,0,0,0,NULL,0},
+   k_rhino_effect_children,k_rhino_effect_child_count,0,0,0,0,NULL,0,0,0,0,NULL,0,NULL,0},
   {"WIRE SPONGE",2,k_sponge_roster_id,k_sponge_body,2,4,
    k_sponge_banks,COUNT(k_sponge_banks),k_sponge_copies,COUNT(k_sponge_copies),
    k_sponge_shim_code,k_sponge_blobs,COUNT(k_sponge_blobs),
@@ -117,7 +125,7 @@ static const MmxRelocBoss kBosses[]={
    0xb5a70c,X1_FIRE,k_sponge_rooms,COUNT(k_sponge_rooms),
    /* Death path $3B = 6 splits him in two: fall, land, 30 frames, the halves
    * part, 60 frames, then his explosion. */
-   0x3b,6,180,k_sponge_pokes,COUNT(k_sponge_pokes)},
+   0x3b,6,180,k_sponge_pokes,COUNT(k_sponge_pokes),k_sponge_effect_filters,COUNT(k_sponge_effect_filters)},
 };
 /* Zero/sink area for X3-only globals: reads see zero, writes hit ROM. */
 enum { ZERO_AREA=0x86fe40, ZERO_SIZE=0x100 };
@@ -179,6 +187,10 @@ static bool build(const MmxRelocBoss *boss,const uint8_t *rom,size_t size,char *
         boss->effect_children[i].controller)) {
       snprintf(error,cap,"%s: cannot register effect $%02X",boss->name,boss->effect_children[i].kind);return false;
     }
+  for(size_t i=0;i<boss->effect_filter_count;++i) {
+    const MmxRelocEffectFilter *f=&boss->effect_filters[i];
+    MmxBossRushForeignArtSetEffectFilter(boss->roster_id,f->kind,f->set,f->first,f->last);
+  }
   if(!MmxBossRushForeignSetScratch(boss->roster_id,boss->scratch,boss->scratch_size) ||
       (boss->saber_kill && !MmxBossRushForeignSetSaberKill(boss->roster_id,boss->saber_kill,boss->saber_value))) {
     snprintf(error,cap,"%s: cannot register its shared state",boss->name);return false;

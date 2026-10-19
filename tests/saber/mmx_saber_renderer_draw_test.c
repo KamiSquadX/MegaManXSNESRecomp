@@ -18,7 +18,12 @@ const MmxForeignPose *MmxBossRushForeignPose(unsigned id,unsigned set,unsigned p
   (void)id;(void)set;(void)pose;return NULL;
 }
 const uint16_t *MmxBossRushForeignColors(unsigned id) { (void)id;return NULL; }
+const MmxForeignPose *MmxBossRushForeignObjectPose(unsigned id,unsigned set,unsigned pose,unsigned base) {
+  (void)id;(void)set;(void)pose;(void)base;return NULL;
+}
+unsigned MmxBossRushForeignPalettes(unsigned id) { (void)id;return 0; }
 bool MmxBossRushForeignArtEffectClass(unsigned id,uint8_t kind) { (void)id;(void)kind;return false; }
+bool MmxBossRushForeignOwnEffect(unsigned id,const uint8_t *object) { (void)id;(void)object;return false; }
 
 #ifndef MMX_SABER_RENDER_CACHE_DIR
 #define MMX_SABER_RENDER_CACHE_DIR ""

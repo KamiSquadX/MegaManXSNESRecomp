@@ -370,6 +370,18 @@ several relocated bosses coexist):
 | `stockdeath` shim | replaces the source game's stock death scene |
 
 The zero area moved to `$86:FE40` (256 bytes) to make room for his tables.
+A source game's per-stage slot tables (X2 `$7F:8200`/`$7F:8300`, indexed
+by graphics slot) are copied whole, with the room's values, to padding bank
+`$3C` (`Game.slot_tables`).
+
+**Renderer for relocated bodies.** Objects draw from the source game's sprite
+VRAM as their room's stage list lays it out (`ArtSource` slots: resource at
+its tile, the palette list from OBJ palette 4). Each object's tiles start
+at its own base (attribute bit 0, `+$18`) and use its own palette; an
+object draws only when `+$0E` bit 7 says it asked to this frame. Effect
+classes X1 also spawns in a boss's seat take a filter (the boss's sprite
+set, or its spawn variants before the first update); other effects of
+those classes are freed.
 
 ## Remaining foundation pieces
 

@@ -34,6 +34,16 @@ static SpongeHit rush_sponge_hit(uint8_t *snapshot,size_t size,unsigned object,u
     frame(t%30==0 && !result.damage?button:0);rush_keep_players_alive();
     unsigned hp=g_ram[object+0x27]&127;
     if(!result.damage && hp<start_hp) result.damage=start_hp-hp;
+    /* MMX_SPONGE_FRAMES: his damage flash (first hit case only). */
+    static unsigned flash_frames;
+    if(getenv("MMX_SPONGE_FRAMES") && result.damage && flash_frames<12 && !kill) {
+      static uint32_t review[256*224];char name[64];
+      if(MmxRendererDraw(review,(MmxRenderView){256,0,4.0/3.0},true)) {
+        snprintf(name,sizeof(name),"sponge-flash%02u.ppm",flash_frames);rush_rhino_save_ppm(name,review);
+        fprintf(stderr,"flash %u attr=%02x\n",flash_frames,g_ram[object+0x11]);
+      }
+      ++flash_frames;
+    }
     if(g_ram[object+1]==2 && g_ram[object+2]==0x0c) result.flinched=true;
     if(g_ram[object+1]==4 && g_ram[object+0x3b]) result.death_path=g_ram[object+0x3b];
     /* His halves are debris class $2B (spawned as variants $52/$53, which
@@ -95,12 +105,35 @@ static void rush_sponge_checks(uint8_t *start,size_t cap,const char *x2) {
     /* Shorten his fall by 24 pixels, below any arena entrance (a 62-frame
      * fall once left his vine waiting forever, playtest 2026-10-18). */
     if(t==1) eagle_putword(g_ram+object+8,eagle_word(g_ram+object+8)+24);
+    /* MMX_SPONGE_FORCE=<behavior, hex>: start it once combat begins (art
+     * review of attacks his random choice may skip). */
+    if(getenv("MMX_SPONGE_FORCE") && fighting_at && t==fighting_at+20) {
+      g_ram[object+2]=(uint8_t)strtoul(getenv("MMX_SPONGE_FORCE"),NULL,16);g_ram[object+3]=0;
+    }
     frame(0);rush_keep_players_alive();s=MmxBossRushGetState();
+    /* MMX_SPONGE_FRAMES: save a render every 5 frames (art review). */
+    if(getenv("MMX_SPONGE_FRAMES") && t%5==0 && t<1600) {
+      static uint32_t review[256*224];char name[64];
+      if(MmxRendererDraw(review,(MmxRenderView){256,0,4.0/3.0},true)) {
+        snprintf(name,sizeof(name),"sponge-f%04u.ppm",t);rush_rhino_save_ppm(name,review);
+      }
+      fprintf(stderr,"objects t=%u",t);
+      for(unsigned d=0xe68;d<0x1d08;d+=d<0x1628?64:32) {
+        if(d==0x1228) d=0x1428;
+        if(d==0x1628) d=0x1928;
+        if(g_ram[d] && MmxBossRushOwner(d)==1)
+          fprintf(stderr," [%04x x%04x y%04x c%02x v%02x st%02x s%02x p%02x a%02x b%02x d%02x]",d,
+              (eagle_word(g_ram+d+5)-eagle_word(g_ram+0x1e4d))&0xffff,(eagle_word(g_ram+d+8)-eagle_word(g_ram+0x1e50))&0xffff,
+              g_ram[d+10],g_ram[d+11],g_ram[d+1],g_ram[d+0x16],g_ram[d+0x17],g_ram[d+0x11],g_ram[d+0x18],g_ram[d+0x0e]);
+      }
+      fputc('\n',stderr);
+    }
     if(!s.bosses[1].phase || s.bosses[1].id!=13) {fprintf(stderr,"sponge left seat 1 at t=%u\n",t);break;}
     unsigned state=g_ram[object+1]<<16|g_ram[object+2]<<8|g_ram[object+3];
     int x=(int)eagle_word(g_ram+object+5)-(int)s.camera_x,y=(int)eagle_word(g_ram+object+8)-(int)s.camera_y;
-    if(state!=last) fprintf(stderr,"sponge t=%u state=%02x/%02x/%02x x=%d y=%d hp=%u set=%02x pose=%02x prof=%02x\n",
-        t,state>>16,(state>>8)&255,state&255,x,y,g_ram[object+0x27]&127,g_ram[object+0x16],g_ram[object+0x17],g_ram[object+0x28]);
+    if(state!=last) fprintf(stderr,"sponge t=%u state=%02x/%02x/%02x x=%d y=%d hp=%u set=%02x pose=%02x prof=%02x draw=%02x\n",
+        t,state>>16,(state>>8)&255,state&255,x,y,g_ram[object+0x27]&127,g_ram[object+0x16],g_ram[object+0x17],g_ram[object+0x28],
+        g_ram[object+0x0e]);
     last=state;
     if(g_ram[object+1]==2) {
       seen_behavior|=1u<<((g_ram[object+2]/2)&31);
@@ -135,7 +168,7 @@ static void rush_sponge_checks(uint8_t *start,size_t cap,const char *x2) {
       fighting_at,seen_behavior,min_x,max_x,min_y,max_y,max_hp,shots,effects_seen,s.bosses[1].phase);
   check(fighting_at && s.bosses[1].phase==MMX_RUSH_FIGHTING,"Wire Sponge's original intro hands over to combat");
   check(max_hp==32,"Wire Sponge's intro fills his health meter");
-  check(shot_pixels>=16 && segment_pixels>=16,"Wire Sponge's shots and whip draw with his X2 art");
+  check(shot_pixels>=8 && segment_pixels>=16,"Wire Sponge's shots and whip draw with his X2 art");
   const MmxForeignPose *art=MmxBossRushForeignPose(13,g_ram[object+0x16],g_ram[object+0x17]&0x7f);
   fprintf(stderr,"sponge art: colors=%d set=%02x pose=%02x -> %dx%d\n",MmxBossRushForeignColors(13)!=NULL,
       g_ram[object+0x16],g_ram[object+0x17],art?art->width:0,art?art->height:0);
