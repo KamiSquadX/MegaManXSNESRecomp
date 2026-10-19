@@ -18,9 +18,14 @@ extern "C" {
 #endif
 
 typedef struct MmxOptionsState {
-  uint8_t no_double_tap;  /* 0 = X1's double-tap dash */
+  uint8_t no_double_tap;  /* 0 = double-tap dash */
   uint8_t hold_dash;      /* 0 = X1's press-to-dash wall kick */
   uint8_t reserved[2];
+  /* Double-tap tracking per seat (0, 1): left/right as bits 1 and 2. */
+  uint8_t tap_held[2];    /* held last frame */
+  uint8_t tap_dir[2];     /* armed by a first tap */
+  uint8_t tap_timer[2];   /* frames left for the second tap */
+  uint8_t tap_dashing[2]; /* the direction whose hold keeps dash held */
 } MmxOptionsState;
 
 MmxOptionsState MmxOptionsGetState(void);
@@ -34,6 +39,12 @@ void MmxOptionsLoadPreferences(void);
 void MmxOptionsRegisterHooks(void);
 /* The options screen is up (presentation only). */
 bool MmxOptionsScreenActive(void);
+/* RtlGameInfo.frame_begin: the replay hook, then DOUBLE TAP DASH. A second
+ * tap of left or right becomes the dash button, held while that direction
+ * is, so everything that answers dash (a saber combo's cancel, the air
+ * dash window) answers a double tap too. Runs on the recorded word, so
+ * replays and netplay reproduce it. */
+bool MmxOptionsFrameBegin(uint32_t *inputs);
 
 #ifdef __cplusplus
 }

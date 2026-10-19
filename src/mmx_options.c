@@ -8,6 +8,9 @@
 #include "host_paths.h"
 #include "snes/interp_bridge.h"
 #include "mmx_replay.h"
+#include "mmx_weapons.h"
+#include "mmx_wide_policy.h"
+#include "snes_overlay_draw.h"
 #include "netplay/snes_netplay.h"
 
 extern int snes_frame_counter;
@@ -16,8 +19,12 @@ static MmxOptionsState state;
 
 MmxOptionsState MmxOptionsGetState(void) { return state; }
 bool MmxOptionsValidState(const MmxOptionsState *s) {
-  return s && s->no_double_tap <= 1 && s->hold_dash <= 1 &&
-         !s->reserved[0] && !s->reserved[1];
+  if (!s || s->no_double_tap > 1 || s->hold_dash > 1 || s->reserved[0] || s->reserved[1])
+    return false;
+  for (unsigned i = 0; i < 2; ++i)
+    if (s->tap_held[i] > 3 || s->tap_dir[i] > 2 || s->tap_timer[i] > 12 || s->tap_dashing[i] > 2)
+      return false;
+  return true;
 }
 bool MmxOptionsSetState(const MmxOptionsState *s) {
   if (!MmxOptionsValidState(s)) return false;
@@ -66,10 +73,51 @@ static void save_preferences(void) {
  * X's update runs with D = $0BA8. */
 
 /* $81:9742: X1's second-tap check compares the direction armed by the first
- * tap ($0BFB). Nothing armed, nothing matches. */
+ * tap ($0BFB). Nothing is ever armed: X1's own double-tap dash starts only
+ * from a standing walk and skips everything that listens for the dash
+ * button. MmxOptionsFrameBegin makes the double tap a dash press instead. */
 static void double_tap_hook(CpuState *cpu, uint32_t pc24) {
   (void)pc24;
-  if (state.no_double_tap) g_ram[(uint16_t)(cpu->D + 0x53)] = 0;
+  g_ram[(uint16_t)(cpu->D + 0x53)] = 0;
+}
+
+/* ---- DOUBLE TAP DASH -------------------------------------------------------
+ * X1's timing: the second press within twelve frames of the first. */
+enum { TAP_WINDOW = 12 };
+static uint16_t tap_seat(unsigned seat, uint16_t word, bool active) {
+  uint8_t held = (uint8_t)((word >> 6) & 3);   /* bit 1 left, bit 2 right */
+  uint8_t pressed = (uint8_t)(held & ~state.tap_held[seat]);
+  state.tap_held[seat] = held;
+  if (!active) {
+    state.tap_dir[seat] = state.tap_timer[seat] = state.tap_dashing[seat] = 0;
+    return word;
+  }
+  if (state.tap_dashing[seat]) {
+    if (held == state.tap_dashing[seat]) return (uint16_t)(word | SNES_PAD_A);
+    state.tap_dashing[seat] = 0;
+  }
+  if (state.tap_timer[seat] && !--state.tap_timer[seat]) state.tap_dir[seat] = 0;
+  if (pressed != 1 && pressed != 2) return word;
+  if (pressed == state.tap_dir[seat]) {
+    state.tap_dir[seat] = state.tap_timer[seat] = 0;
+    state.tap_dashing[seat] = pressed;
+    return (uint16_t)(word | SNES_PAD_A);
+  }
+  state.tap_dir[seat] = pressed;
+  state.tap_timer[seat] = TAP_WINDOW;
+  return word;
+}
+
+bool MmxOptionsFrameBegin(uint32_t *inputs) {
+  bool run = MmxReplayBegin(inputs);
+  /* Gameplay only: menus keep left/right for their own use. */
+  bool active = !state.no_double_tap && MmxWidePolicy_IsStageScene(g_ram) &&
+                !MmxWeaponsMenuVisible(g_ram);
+  uint32_t w = *inputs;
+  uint16_t p1 = tap_seat(0, (uint16_t)(w & 0x0fff), active);
+  uint16_t p2 = tap_seat(1, (uint16_t)((w >> 12) & 0x0fff), active);
+  *inputs = (w & ~0x00ffffffu) | p1 | ((uint32_t)p2 << 12);
+  return run;
 }
 /* $81:8767: the wall kick takes dash speed when the dash window ($0BFE,
  * opened for ten frames by a dash press in the air) is still open. Held

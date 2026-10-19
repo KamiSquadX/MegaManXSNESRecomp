@@ -134,14 +134,21 @@ static void rush_title_navigation_checks(uint8_t *snapshot,size_t cap) {
   check(RtlLoadSnapshotFromMemory(snapshot,saved),"key config baseline restores");
   for(unsigned step=0;step<3;++step) {frame(SNES_PAD_DOWN);zero_replay(12);}
   frame(SNES_PAD_START);
-  check(MmxBossRushGetState().menu==3,"KEY CONFIG opens from the fourth title row");
+  check(MmxBossRushGetState().menu==4,"KEY CONFIG's confirmation waits for X's title shot");
+  bool key_config_shot=false;
+  for(unsigned t=0;t<40 && MmxBossRushGetState().menu==4;++t) {
+    frame(0);
+    for(unsigned d=0x1228;d<0x1428;d+=64) key_config_shot|=g_ram[d]!=0;
+  }
+  check(key_config_shot,"KEY CONFIG's confirmation fires X's title shot");
+  check(MmxBossRushGetState().menu==3,"KEY CONFIG opens from the fourth title row after the shot");
   for(unsigned t=0;t<600;++t) frame(0);
   check(MmxBossRushGetState().menu==3 && g_ram[0xd1]==0 && MmxBossRushGetState().mode==MMX_RUSH_OFF,
       "the title waits behind KEY CONFIG past X1's idle timeout");
   RtlSetPadExt(0,MMX_EXT_CLOSE_KEY_CONFIG);frame(0);RtlSetPadExt(0,0);
   check(MmxBossRushGetState().menu==1 && MmxBossRushGetState().selection==3,
       "a seat's close signal returns to the KEY CONFIG row");
-  frame(SNES_PAD_START);zero_replay(12);
+  frame(SNES_PAD_START);zero_replay(40);
   check(MmxBossRushGetState().menu==3 && g_ram[0xd1]==0,
       "Start on KEY CONFIG never confirms X1's Option Mode underneath");
   RtlSetPadExt(1,MMX_EXT_CLOSE_KEY_CONFIG);frame(0);RtlSetPadExt(1,0);
@@ -160,7 +167,11 @@ static void options_dash_checks(uint8_t *snapshot,size_t cap) {
     MmxOptionsState o={0};o.no_double_tap=(uint8_t)off;check(MmxOptionsSetState(&o),"dash option installs");
     int x0=eagle_word(g_ram+0xbad);
     frame(SNES_PAD_LEFT);frame(SNES_PAD_LEFT);frame(0);frame(0);
-    for(unsigned t=0;t<16;++t) frame(SNES_PAD_LEFT);
+    frame(SNES_PAD_LEFT);
+    /* The second tap is the dash button itself, held with the direction. */
+    check(!(RtlGetPadState(0)&SNES_PAD_A)==off,"a double tap presses dash only with DOUBLE TAP DASH on");
+    for(unsigned t=0;t<15;++t) frame(SNES_PAD_LEFT);
+    check(!(RtlGetPadState(0)&SNES_PAD_A)==off,"dash stays held while the tapped direction is");
     dx[off]=x0-eagle_word(g_ram+0xbad);
   }
   fprintf(stderr,"double tap distance on=%d off=%d\n",dx[0],dx[1]);

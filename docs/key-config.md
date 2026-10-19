@@ -41,6 +41,9 @@ These are X8's defaults, except change player (Select, the recomp's
 long-standing swap button) and cancel (Face Button Bottom). There is no
 keyboard column: the launcher already maps keys onto these pad controls.
 
+Selecting KEY CONFIG on the title plays X's confirmation shot like the other
+rows, then opens the page.
+
 Move with the D-pad, press **menu confirm** (or Start) on a row and then the
 control to assign. **DEFAULT** restores the list above, **EXIT** or **cancel**
 returns to the title. The choices are saved in `key_config.ini`.
@@ -56,8 +59,11 @@ actions, not your bindings.
 
 X1's **KEY CONFIG.** section is replaced by two options:
 
-* **DOUBLE TAP DASH** (default **ON**, as in X1). **OFF** stops a double tap of
-  left or right from dashing; only the dash action dashes.
+* **DOUBLE TAP DASH** (default **ON**). A second tap of left or right within
+  twelve frames is the dash button, held for as long as that direction is.
+  Anything the dash button does, a double tap does too: dashing in the air
+  window, cancelling a Zero saber combo, and so on. (X1's own double tap only
+  started a dash from a standing walk.) **OFF**: only the dash action dashes.
 * **HOLD DASH** (default **OFF**, as in X1). **ON** makes a wall kick a dash
   wall kick whenever dash is held, as in X2 onwards. Off, X1 needs dash
   pressed together with the kick.

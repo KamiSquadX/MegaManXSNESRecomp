@@ -800,6 +800,15 @@ void MmxBossRushFrame(uint8_t *r,uint16_t input) {
     unsigned rows=title_rows();
     /* Old playtest snapshots may contain the removed mode submenu. */
     if(s.menu==2) {s.menu=1;s.selection=3;}
+    if(s.menu==4) {
+      /* KEY CONFIG confirmed: X1's confirmation state ($39 = 4) plays X's
+       * shot while counting $3B down. Before it would start the row it
+       * thinks is chosen, return to its idle menu state (2) and open the
+       * page. */
+      r[0xab]=r[0xac]=0;
+      if(r[0x39]!=4 || r[0x3b]<=60-36) {s.menu=3;r[0x39]=2;r[0x3b]=0xf0;}
+      s.menu_input=input;MmxBossRushSetState(&s);return;
+    }
     if(s.menu==3) {
       /* KEY CONFIG is open. The page itself is the host's (MmxKeyConfig):
        * the guest only holds the title, with X1's idle timer kept from
@@ -836,7 +845,9 @@ void MmxBossRushFrame(uint8_t *r,uint16_t input) {
       bool confirm=(pressed&(SNES_PAD_START|SNES_PAD_A|SNES_PAD_Y))!=0;
       r[0xab]=0;r[0xac]=0;
       if(confirm && s.selection==3) {
-        s.menu=3;s.menu_input=input;MmxBossRushSetState(&s);return;
+        /* $80:92A8's confirmation: state 4, its timer and X's shot. */
+        r[0x39]=4;r[0x3b]=60;r[0xc01]=2;
+        s.menu=4;s.menu_input=input;MmxBossRushSetState(&s);return;
       }
       if(confirm && s.selection==4) {
         MmxBossRushSetState(&s);load(r,MmxCoopEnabled());return;
