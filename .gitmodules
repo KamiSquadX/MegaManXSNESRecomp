@@ -1,12 +1,12 @@
 [submodule "recomp-ui"]
 	path = recomp-ui
-	url = https://github.com/RetroPortingToolKit/recomp-ui.git
-	branch = master
+	url = https://github.com/KamiSquadX/MegaManXSNESRecomp.git
+	branch = components/recomp-ui
 
 [submodule "snesrecomp"]
 	path = snesrecomp
-	url = https://github.com/RetroPortingToolKit/snesrecomp.git
-	branch = main
+	url = https://github.com/KamiSquadX/MegaManXSNESRecomp.git
+	branch = components/snesrecomp
 [submodule "third_party/dizProjects"]
 	path = third_party/dizProjects
 	url = https://github.com/bogaa/dizProjects.git
