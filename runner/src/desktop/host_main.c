@@ -4942,7 +4942,7 @@ static const char kDefaultConfigIniContent[] =
   "ControlsP2 = DpadUp, DpadDown, DpadLeft, DpadRight, Back, Start, B, A, Y, X, Lb, Rb\n"
   "\n"
   "# A modern pad's extra controls, in this order:\n"
-  "#   L2, R2, L3, R3, R.S. Up, R.S. Down, R.S. Left, R.S. Right\n"
+  "#   L2, R2, L3, R3, R-Stick Up, R-Stick Down, R-Stick Left, R-Stick Right\n"
   "ControlsExt =   L2, R2, L3, R3, RsUp, RsDown, RsLeft, RsRight\n"
   "ControlsExtP2 = L2, R2, L3, R3, RsUp, RsDown, RsLeft, RsRight\n";
 

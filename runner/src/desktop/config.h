@@ -64,7 +64,7 @@ enum {
   kKeys_ControlsP8,
   kKeys_ControlsP8_Last = kKeys_ControlsP8 + 11,
   /* A modern pad's controls past the SNES twelve, per seat, in SNES_EXT_*
-   * order: L2, R2, L3, R3, R.S. Up, R.S. Down, R.S. Left, R.S. Right.
+   * order: L2, R2, L3, R3, R-Stick Up, R-Stick Down, R-Stick Left, R-Stick Right.
    * [GamepadMap] ControlsExt / ControlsExtP2.. and [KeyMap] bind them; they
    * never reach the SNES bus (RtlSetPadExt carries them). Appended so every
    * earlier command keeps its value. */

@@ -86,8 +86,8 @@ uint16_t keybinds_read_player(const uint8_t *keys, int player);
 uint16_t keybinds_read_player_runner(const uint8_t *keys, int player);
 
 /* The extended controls for the same player, one bit each:
- *   bit 0 L2, 1 R2, 2 L3, 3 R3, 4 R.S. Up, 5 R.S. Down, 6 R.S. Left,
- *   bit 7 R.S. Right  (SNES_EXT_* in desktop/config.h). */
+ *   bit 0 L2, 1 R2, 2 L3, 3 R3, 4 R-Stick Up, 5 R-Stick Down, 6 R-Stick Left,
+ *   bit 7 R-Stick Right  (SNES_EXT_* in desktop/config.h). */
 uint8_t keybinds_read_player_ext(const uint8_t *keys, int player);
 
 /* ── Rebind API (used by the launcher's Configure view) ──────────────────
