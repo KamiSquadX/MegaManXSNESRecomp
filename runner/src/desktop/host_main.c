@@ -3314,6 +3314,15 @@ int snesrecomp_desktop_main(const SnesDesktopHostGame *game, int argc, char **ar
       g_config.output_method, g_config.new_renderer, g_config.window_scale,
       g_config.fullscreen, g_config.enable_audio, g_config.audio_freq,
       g_config.audio_samples);
+#ifdef _WIN32
+  /* runner/windows/snesrecomp_utf8.manifest makes narrow paths UTF-8. Windows
+   * older than 10 1903 ignores it; say so, because a non-ASCII install path
+   * then fails in ways that otherwise look unrelated. */
+  if (GetACP() != CP_UTF8)
+    host_report_breadcrumb("windows: process code page is %u, not UTF-8; "
+                           "paths with non-ASCII characters may fail",
+                           (unsigned)GetACP());
+#endif
   PadGestureConfigure(&g_rewind_gesture, g_config.rewind_gesture, "Select+R3",
                       "rewind", "RewindGesture");
   if (game->in_game_launcher)
