@@ -1191,6 +1191,26 @@ std::string resource_path(Runtime& runtime, const Package& package,
 }
 
 bool sha256_file(const fs::path& path, std::string& out, std::string* error);
+
+const SnesRomRevision* g_rom_catalog = nullptr;
+int g_rom_catalog_count = 0;
+unsigned g_rom_catalog_generation = 0;   /* invalidates memoized statuses */
+
+/* Status for a ROM resource whose digest is not the required one: which dump
+ * it is (from the port's catalog), or its header when unknown, and what to
+ * select instead. */
+std::string wrong_rom_status_uncached(const Resource& resource,
+                                     const std::string& path_text) {
+    char why[256] = "";
+    const SnesRomVerdict verdict = snes_rom_identity_check_file(
+        path_text.c_str(), g_rom_catalog, g_rom_catalog_count,
+        resource.normalized_sha256.c_str(), nullptr, nullptr, nullptr, why,
+        sizeof(why));
+    if (verdict == kSnesRom_Ok || !why[0])
+        return "Wrong ROM: select the original supported version";
+    return why;
+}
+
 bool validate_resource_file(const Resource& resource,
                             const std::string& path_text,
                             std::string* status) {
@@ -1222,7 +1242,13 @@ bool validate_resource_file(const Resource& resource,
         }
     }
     if (!resource.normalized_sha256.empty()) {
-        struct HashMemo { uintmax_t size; fs::file_time_type time; std::string hash; };
+        /* The status is drawn every frame: keep the explanation for a wrong
+         * ROM with its digest rather than reading the file again. */
+        struct HashMemo {
+            uintmax_t size; fs::file_time_type time; std::string hash;
+            std::string wrong_for; std::string wrong_status;
+            unsigned wrong_generation;
+        };
         static std::map<std::string, HashMemo> memo;
         const auto size = fs::file_size(path, ec);
         if (ec || size > 64 * 1024 * 1024) { if (status) *status = "ROM size is invalid"; return false; }
@@ -1232,10 +1258,20 @@ bool validate_resource_file(const Resource& resource,
         if (found == memo.end() || found->second.size != size || found->second.time != time) {
             std::string hash, error;
             if (!sha256_file(path, hash, &error)) { if (status) *status = "Cannot read ROM"; return false; }
-            found = memo.insert_or_assign(path_text, HashMemo{size,time,hash}).first;
+            found = memo.insert_or_assign(path_text, HashMemo{size,time,hash,{},{},0}).first;
         }
         if (found->second.hash != resource.normalized_sha256) {
-            if (status) *status = "Wrong ROM: select the original supported version";
+            if (status) {
+                if (found->second.wrong_for != resource.normalized_sha256 ||
+                    found->second.wrong_generation != g_rom_catalog_generation ||
+                    found->second.wrong_status.empty()) {
+                    found->second.wrong_status =
+                        wrong_rom_status_uncached(resource, path_text);
+                    found->second.wrong_for = resource.normalized_sha256;
+                    found->second.wrong_generation = g_rom_catalog_generation;
+                }
+                *status = found->second.wrong_status;
+            }
             return false;
         }
         if (status) *status = "ROM verified";
@@ -3072,6 +3108,13 @@ extern "C" int snes_mod_runtime_commit_c(const char* rom_path) {
 
 extern "C" void snes_mod_runtime_activate_plugins_c(void) {
     SNESRecomp::mod_runtime_activate_plugins();
+}
+
+extern "C" void snes_mod_runtime_set_rom_catalog_c(const SnesRomRevision* catalog,
+                                                   int count) {
+    SNESRecomp::g_rom_catalog = count > 0 ? catalog : nullptr;
+    SNESRecomp::g_rom_catalog_count = count > 0 && catalog ? count : 0;
+    ++SNESRecomp::g_rom_catalog_generation;
 }
 
 extern "C" const char* snes_mod_runtime_last_error_c(void) {
