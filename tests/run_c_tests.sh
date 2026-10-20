@@ -390,6 +390,12 @@ if [ -n "$KB_SDL_LIBS" ]; then
         "$ROOT/runner/src/keybinds.c" \
         $KB_SDL_LIBS -o "$OUT/keybinds_runner_layout_test"
     ( cd "$OUT" && ./keybinds_runner_layout_test )
+    "$CC" -std=c11 -Wall -Wextra -O1 $KB_SDL_DEF $KB_SDL_CFLAGS \
+        -I "$ROOT/runner/src" \
+        "$ROOT/tests/joypad/keybinds_appimage_test.c" \
+        "$ROOT/runner/src/keybinds.c" \
+        $KB_SDL_LIBS -o "$OUT/keybinds_appimage_test"
+    "$OUT/keybinds_appimage_test"
 else
     echo "  (skipped: no SDL headers)"
 fi
