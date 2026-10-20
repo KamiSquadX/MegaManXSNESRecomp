@@ -269,6 +269,29 @@ list(APPEND SNESRECOMP_RUNNER_SOURCES
     ${SNESRECOMP_RUNNER_ROOT}/src/snes/cx4.c)
 message(STATUS "Cx4: instruction-level HG51B S169 core (ares, ISC)")
 
+# ── Windows: UTF-8 process code page ──────────────────────────────────────
+# Paths cross the host as narrow strings: GetModuleFileNameA, fopen and the
+# command line on the C side; std::filesystem, SDL and the launcher's pickers
+# on the other. On Windows those disagreed (ANSI vs UTF-8), and an install
+# folder such as "Mega Man X Recompilé" aborted at startup. The manifest makes
+# the process code page UTF-8 (Windows 10 1903+), so every narrow path is
+# UTF-8 on both sides. It rides in the runner sources so every host
+# executable carries it (resources in a static library would be dropped).
+if(WIN32)
+    set(_snes_utf8_manifest "${SNESRECOMP_RUNNER_ROOT}/windows/snesrecomp_utf8.manifest")
+    if(MSVC)
+        list(APPEND SNESRECOMP_RUNNER_SOURCES "${_snes_utf8_manifest}")
+    else()
+        enable_language(RC)
+        set(_snes_utf8_rc "${CMAKE_BINARY_DIR}/snesrecomp_utf8_manifest.rc")
+        file(WRITE "${_snes_utf8_rc}.in"
+            "1 24 \"${_snes_utf8_manifest}\"\n")
+        configure_file("${_snes_utf8_rc}.in" "${_snes_utf8_rc}" COPYONLY)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_snes_utf8_manifest}")
+        list(APPEND SNESRECOMP_RUNNER_SOURCES "${_snes_utf8_rc}")
+    endif()
+endif()
+
 # Execution policy DEFAULT for optimized (HLE) replacements over the faithful
 # LLE floor. This chooses the default only — the policy itself is resolved at
 # runtime by snesrecomp_execution_mode() and can always be overridden with
