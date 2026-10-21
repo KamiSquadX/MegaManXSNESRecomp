@@ -19,6 +19,7 @@ REQUIRED |= {0x049e15, 0x049e3a}  # Compiled low-bank mirror of native contact.
 # Dash exits that would stand Zero up, and the dash blocks that continue it.
 SLIDE_PCS = {0x81898e: '8991', 0x818999: '899C', 0x818965: '8971'}
 REQUIRED |= SLIDE_PCS.keys() | {0x81a062}
+REQUIRED |= {0x819eac, 0x819ef3, 0x819f36}
 
 
 def apply(text):
@@ -42,7 +43,22 @@ def apply(text):
             if store and int(store[1] == '8') == axis:
                 output.append(f'    {MARKER} {{ extern uint8_t g_ram[0x20000]; extern unsigned MmxZeroWeaponOrigin(const uint8_t *, unsigned, unsigned, unsigned); {store[2]} = (uint16)MmxZeroWeaponOrigin(g_ram, cpu->D, {axis}, {store[2]}); cpu_write_a_m(cpu, {store[2]}); }}\n')
                 found.add(pc)
+        if pc == 0x819ef3:
+            store = re.search(r'cpu_write16\(cpu, cpu->DB, \(uint16\)\(0x0002\), (_v\d+)\);', line)
+            if store:
+                output.append(f'    {MARKER} {{ extern uint8_t g_ram[0x20000]; extern unsigned MmxZeroHeadBreakY(const uint8_t *, unsigned, unsigned); {store[1]} = (uint16)MmxZeroHeadBreakY(g_ram,cpu->D,{store[1]}); cpu_write_a_m(cpu,{store[1]}); }}\n')
+                found.add(pc)
         output.append(line)
+        if pc == 0x819f36:
+            load = re.search(r'uint16 (_v\d+) = 0xffed;', line)
+            if load:
+                output.append(f'    {MARKER} {{ extern uint8_t g_ram[0x20000]; extern unsigned MmxZeroHeadProbe(const uint8_t *, unsigned, unsigned); {load[1]} = (uint16)MmxZeroHeadProbe(g_ram,cpu->D,{load[1]}); }}\n')
+                found.add(pc)
+        if pc == 0x819eac:
+            load = re.search(r'uint8 (_v\d+) = 0xed;', line)
+            if load:
+                output.append(f'    {MARKER} {{ extern uint8_t g_ram[0x20000]; extern unsigned MmxZeroHeadProbe(const uint8_t *, unsigned, unsigned); {load[1]} = (uint8)MmxZeroHeadProbe(g_ram,cpu->D,{load[1]}); }}\n')
+                found.add(pc)
         if (pc & 0x7fffff) == 0x049e15:
             load = re.search(r'uint16 (_v\d+) = cpu_read16\(cpu,', line) if '0x000a' in line and 'cpu->X' in line else None
             if load:

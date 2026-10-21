@@ -471,6 +471,21 @@ unsigned MmxZeroUpgradeBits(unsigned pc, unsigned original) {
     default: return original;
   }
 }
+unsigned MmxZeroHeadProbe(const uint8_t r[0x20000], unsigned object, unsigned original) {
+  /* $81:9EAC probes one pixel above X's standing terrain top (-18).
+   * Zero's standing top is -26, so the original -19 query misses a block
+   * that his real ceiling collision has already stopped against. Keep the
+   * native horizontal probes and destruction path, and keep X/dash boxes. */
+  return MmxZeroActive() && r && object == 0xba8 && (original == 0xed || original == 0xffed) &&
+      word(r + object + 0x20) == 0xa552
+      ? original - 8 : original;
+}
+unsigned MmxZeroHeadBreakY(const uint8_t r[0x20000], unsigned object, unsigned original) {
+  /* $81:9EF9 stores the independently calculated removal coordinate. Move
+   * that coordinate by the same amount as the collision query, preserving
+   * the guest ADC flags just as the original STA does. */
+  return (original + MmxZeroHeadProbe(r,object,0xed) - 0xed) & 65535;
+}
 
 static bool own_projectile(const uint8_t *r, unsigned d) {
   return d >= 0x1228 && d < 0x1428 && (d & 63) == 0x28 &&

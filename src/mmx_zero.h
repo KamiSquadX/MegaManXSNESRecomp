@@ -101,6 +101,9 @@ bool MmxZeroSlideHold(uint8_t ram[0x20000], unsigned pc);
 void MmxZeroSlideTick(uint8_t ram[0x20000]);
 /* Character abilities at native instruction PCs, without changing inventory. */
 unsigned MmxZeroUpgradeBits(unsigned pc, unsigned original);
+/* Native helmet query must reach the active body's ceiling contact row. */
+unsigned MmxZeroHeadProbe(const uint8_t ram[0x20000], unsigned object, unsigned original);
+unsigned MmxZeroHeadBreakY(const uint8_t ram[0x20000], unsigned object, unsigned original);
 void MmxZeroPlayerTick(uint8_t ram[0x20000]);
 void MmxZeroPlayerEnd(uint8_t ram[0x20000]);
 unsigned MmxZeroChargeTier(const MmxZeroState *snapshot);
