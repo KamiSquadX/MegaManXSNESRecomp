@@ -133,6 +133,12 @@ int main(void) {
   assert(MmxZeroUpgradeBits(0x81971c, 0) == 0);
   asset("zero-test.bin"); assert(MmxZeroLoad("zero-test.bin"));
   assert(MmxZeroUpgradeBits(0x81971c, 2) == 10);
+  ram[0xbc8]=0x52;ram[0xbc9]=0xa5;
+  assert(MmxZeroHeadProbe(ram,0xba8,0xed)==0xe5);
+  assert(MmxZeroHeadProbe(ram,0xba8,0)==0);
+  assert(MmxZeroHeadProbe(ram,0xe68,0xed)==0xed);
+  ram[0xbc8]=0x38;ram[0xbc9]=0xbb;
+  assert(MmxZeroHeadProbe(ram,0xba8,0xed)==0xed); /* Dash keeps X's terrain height. */
   const unsigned crush_sites[] = {0x819ea5, 0x8499a4, 0x8198fc};
   for (unsigned modern = 0; modern < 2; ++modern) {
     MmxZeroSetModern(modern);
