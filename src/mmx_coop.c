@@ -1029,6 +1029,7 @@ static void door_hook(CpuState *cpu,uint32_t pc) {
   if(!state.door_pass || cpu->S!=state.door_s || cpu->D!=state.door_d) return;
   TRACE(DOOR,pc,state.door_pass,0,cpu);
   if(at==0xe725 || at==0xecc7) {
+    MmxCoopViewsAdoptPlayer(g_ram,&state,state.current);
     state.anchor=state.current;state.door_pass=0;begin_scene(g_ram);return;
   }
   if(state.door_pass==1) {

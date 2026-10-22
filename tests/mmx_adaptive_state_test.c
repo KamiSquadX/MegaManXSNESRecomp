@@ -17,7 +17,7 @@ static void frame(unsigned input) {
       getenv("MMX_COOP_ONLINE_FIXTURE") || getenv("MMX_COOP_LIFT_REPLAY_FIXTURE") ||
       getenv("MMX_COOP_REGION_REPLAY_FIXTURE") || getenv("MMX_COOP_WRAP_REPLAY_FIXTURE") ||
       getenv("MMX_COOP_SIGMA1_INTRO_FIXTURE") || getenv("MMX_COOP_SIGMA1_LOCKED_FIXTURE") ||
-      getenv("MMX_COOP_SIGMA1_VILE_FIXTURE")) MmxCoopViewsSetOnline(!getenv("MMX_COOP_SIGMA1_UNIFIED"));
+      getenv("MMX_COOP_SIGMA1_VILE_FIXTURE") || getenv("MMX_COOP_SIGMA1_LADDER_FIXTURE")) MmxCoopViewsSetOnline(!getenv("MMX_COOP_SIGMA1_UNIFIED"));
   if(!MmxReplayPlaying() && getenv("MMX_REPLAY_TEST") && !strcmp(getenv("MMX_REPLAY_TEST"),"online")) {
     MmxCoopViewsSetIndependent(true);MmxCoopViewsSetOnline(true);MmxRendererSetPeerView(1);
   }
@@ -1968,6 +1968,9 @@ int main(int argc, char **argv) {
   }
   const char *zero_assets = getenv("MMX_ZERO_TEST_ASSETS");
   const char *zero_title = getenv("MMX_ZERO_TITLE_FIXTURE");
+  if(getenv("MMX_COOP_SIGMA1_LADDER_FIXTURE")) {
+    sigma1_ladder_checks(zero_assets,getenv("MMX_COOP_SIGMA1_LADDER_FIXTURE"),start,expected,actual,cap);return 0;
+  }
   if(getenv("MMX_COOP_LIFT_REPLAY_FIXTURE")) {
     coop_eagle_replay_checks(zero_assets,getenv("MMX_COOP_LIFT_REPLAY_FIXTURE"),start,expected,actual,cap);return 0;
   }
