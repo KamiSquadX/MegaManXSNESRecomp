@@ -16,6 +16,12 @@ typedef struct MmxRenderView { int width, extra; double aspect; } MmxRenderView;
 typedef struct MmxRenderStats {
   unsigned custom_lines, fallback_lines, margin_sprite_pixels, pieces;
 } MmxRenderStats;
+typedef struct MmxRasterStats {
+  uint64_t vram_copied_bytes;
+  size_t vram_allocated_bytes, frame_metadata_bytes;
+  unsigned vram_images;
+  uint64_t vram_compared_bytes;
+} MmxRasterStats;
 
 /* A presentation-only player plane. Origins are signed coordinates on the
  * player's 128x128 canvas; the renderer owns projection and composition. */
@@ -125,9 +131,16 @@ void MmxRendererBeginFrame(const uint8_t ram[0x20000]);
 void MmxRendererCoopFrame(const MmxCoopState *state);
 void MmxRendererHoldFrame(bool held);
 void MmxRendererCaptureLine(const Ppu *ppu, unsigned line);
+/* Scoped to MMX's raster loop: byte comparisons remain the generic fallback.
+ * Call Changed after arbitrary guest/host execution; end before leaving the
+ * loop. Never use this around unobserved direct VRAM writers. */
+void MmxRendererBeginHardwareRaster(const Ppu *ppu);
+void MmxRendererHardwareVramChanged(void);
+void MmxRendererEndHardwareRaster(void);
 bool MmxRendererEndFrame(const uint32_t stock[256 * 224]);
 bool MmxRendererDraw(uint32_t *output, MmxRenderView view, bool anchor_hud);
 MmxRenderStats MmxRendererGetStats(void);
+MmxRasterStats MmxRendererGetRasterStats(void);
 bool MmxRendererStageTile(const uint8_t ram[0x20000], unsigned layer,
                           int x, int y, uint16_t *word);
 bool MmxRendererSaveCapture(const char *path);
