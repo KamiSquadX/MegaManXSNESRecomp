@@ -11801,6 +11801,8 @@ static bool mod_feature_less(const ModFeatureListItem& lhs,
                              const ModFeatureListItem& rhs) {
     const int group = std::strcmp(lhs.feature.group, rhs.feature.group);
     if (group != 0) return group < 0;
+    if (lhs.feature.order != rhs.feature.order)
+        return lhs.feature.order < rhs.feature.order;
     const int name = std::strcmp(lhs.feature.name, rhs.feature.name);
     if (name != 0) return name < 0;
     const int package = std::strcmp(lhs.feature.package_id, rhs.feature.package_id);
@@ -11861,10 +11863,13 @@ static void draw_mod_feature_option(LauncherModel* m,
                 }
                 const bool selected =
                     std::strcmp(choice.value, option.value) == 0;
+                const bool taken = choice.disabled && !selected;
+                if (taken) ImGui::BeginDisabled();
                 if (ImGui::Selectable(choice.label, selected)) {
                     std::snprintf(next, sizeof(next), "%s", choice.value);
                     changed = true;
                 }
+                if (taken) ImGui::EndDisabled();
                 if (selected) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
@@ -12146,6 +12151,7 @@ static void draw_mod_features(LauncherModel* m, const LauncherTheme& th) {
                     ImGui::PushID(feature.id);
 
                     bool enabled = feature.enabled != 0;
+                    if (feature.locked) ImGui::BeginDisabled();
                     if (ImGui::Checkbox("##enabled", &enabled)) {
                         if (!mods->feature_enable(
                                 mods->ctx, feature.package_id, feature.id,
@@ -12156,6 +12162,7 @@ static void draw_mod_features(LauncherModel* m, const LauncherTheme& th) {
                                 m, feature.package_id, feature.id);
                         }
                     }
+                    if (feature.locked) ImGui::EndDisabled();
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("%s %s",
                                           enabled ? ui_text("Disable") : ui_text("Enable"),

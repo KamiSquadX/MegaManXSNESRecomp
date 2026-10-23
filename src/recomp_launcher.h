@@ -1028,6 +1028,13 @@ typedef struct RecompLauncherCModFeature {
      * never reach a shipped build at all -- when one appears here, this is a
      * local developer build. Appended for ABI stability. */
     int  channel;
+    /* List position within the group: lower first, then by name. Appended
+     * for ABI stability; zero keeps the alphabetical order. */
+    int  order;
+    /* Non-zero when the feature follows others (manifest key: follows_any)
+     * and has no switch of its own: the UI shows its checkbox locked.
+     * Appended for ABI stability. */
+    int  locked;
 } RecompLauncherCModFeature;
 
 typedef struct RecompLauncherCModOption {
@@ -1052,6 +1059,10 @@ typedef struct RecompLauncherCModOption {
 typedef struct RecompLauncherCModChoice {
     char value[RECOMP_LAUNCHER_MOD_VALUE_MAX];
     char label[128];
+    /* Non-zero when another option already holds this value (manifest key:
+     * distinct_from). The UI shows it greyed and unselectable. Appended for
+     * ABI stability. */
+    int  disabled;
 } RecompLauncherCModChoice;
 
 typedef struct RecompLauncherCModVersion {
