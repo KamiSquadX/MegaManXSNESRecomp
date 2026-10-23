@@ -251,6 +251,10 @@ to either survivor against all eight Mavericks. It separately restores an
 interrupted-hurt state after a partner death and verifies that the native
 protection countdown expires; active hurt, scripted locks, existing countdowns
 and charged Sting remain intact for both seats.
+Ordinary partner deaths did not reproduce the owner's report of permanent
+survivor invulnerability on current source. The interrupted-hurt state is
+explicitly seeded in its separate regression; recovery for the reported
+death-triggered issue remains tentative pending a capture or owner retest.
 `MMX_BOSS_RUSH_COOP_WEAPON_TEST=1` quick-switches both players through different
 native specials and fires normal and charged shots together. It checks private
 graphics for every visible projectile class and writes CSV traces and images.
