@@ -43,6 +43,9 @@ enum class OptionType {
 struct Choice {
     std::string value;
     std::string label;
+    /* "package:feature": the choice is offered only while that feature is
+     * enabled (greyed out otherwise). */
+    std::string requires;
 };
 
 struct Option {
@@ -57,6 +60,9 @@ struct Option {
     int64_t max_value = 1;
     int64_t step = 1;
     std::vector<Choice> choices;
+    /* Another choice option of the same feature whose current value this
+     * one may not take (two players cannot both pick the same character). */
+    std::string distinct_from;
 };
 
 struct Feature {
@@ -89,6 +95,13 @@ struct Feature {
      * match caps so both peers run the same geometry, so agreement there is
      * wanted rather than merely tolerated. */
     bool presentation_only = false;
+    /* Launcher list position within the group: lower first, then by name.
+     * Every feature without one shares 0. */
+    int64_t order = 0;
+    /* "package:feature package:feature": this feature is enabled exactly
+     * while any of these is, and the player cannot toggle it. Kept as
+     * written; resolved against the selected packages. */
+    std::string follows_any;
     std::vector<std::string> plugins;
 };
 
@@ -663,6 +676,10 @@ bool read_manifest(const fs::path& path, Package& out, std::string* error) {
                 } else if (key == "presentation_only") {
                     parsed = parse_bool(value, bool_value);
                     if (parsed) feature->presentation_only = bool_value;
+                } else if (key == "order") {
+                    parsed = parse_int(value, feature->order);
+                } else if (key == "follows_any") {
+                    parsed = string_field(feature->follows_any);
                 } else known = false;
                 break;
             case Section::Option:
@@ -696,6 +713,8 @@ bool read_manifest(const fs::path& path, Package& out, std::string* error) {
                     parsed = parse_int(value, option->max_value);
                 } else if (key == "step") {
                     parsed = parse_int(value, option->step);
+                } else if (key == "distinct_from") {
+                    parsed = string_field(option->distinct_from);
                 } else known = false;
                 break;
             case Section::Choice:
@@ -705,6 +724,7 @@ bool read_manifest(const fs::path& path, Package& out, std::string* error) {
                 if (!choice) parsed = false;
                 else if (key == "value") parsed = string_field(choice->value);
                 else if (key == "label") parsed = string_field(choice->label);
+                else if (key == "requires") parsed = string_field(choice->requires);
                 else known = false;
                 break;
             case Section::Plugin:
@@ -924,8 +944,20 @@ PackageSelection& package_selection(Runtime& runtime,
     return selection;
 }
 
+bool feature_enabled_ref(Runtime& runtime, const std::string& ref);
 bool feature_enabled(Runtime& runtime, const Package& package,
                      const Feature& feature) {
+    if (!feature.follows_any.empty()) {
+        size_t at = 0;
+        while (at < feature.follows_any.size()) {
+            size_t end = feature.follows_any.find(' ', at);
+            if (end == std::string::npos) end = feature.follows_any.size();
+            const std::string item = feature.follows_any.substr(at, end - at);
+            if (!item.empty() && feature_enabled_ref(runtime, item)) return true;
+            at = end + 1;
+        }
+        return false;
+    }
     PackageSelection& package_state = package_selection(runtime, package);
     FeatureSelection& selection = package_state.features[feature.id];
     if (!selection.has_enabled)
@@ -935,6 +967,13 @@ bool feature_enabled(Runtime& runtime, const Package& package,
         return tier2_capture_enabled() != 0;
     }
     return selection.enabled;
+}
+bool feature_enabled_ref(Runtime& runtime, const std::string& ref) {
+    const size_t colon = ref.find(':');
+    if (colon == std::string::npos) return false;
+    const Package* package = selected_package(runtime, ref.substr(0, colon).c_str());
+    const Feature* feature = package ? find_feature(*package, ref.substr(colon + 1)) : nullptr;
+    return feature && feature->follows_any.empty() && feature_enabled(runtime, *package, *feature);
 }
 
 /* Features claiming the same trusted plugin cannot run together (validate
@@ -1157,8 +1196,32 @@ std::string option_value(Runtime& runtime, const Package& package,
     PackageSelection& package_state = package_selection(runtime, package);
     FeatureSelection& selection = package_state.features[feature.id];
     const auto value = selection.values.find(option.id);
-    return value == selection.values.end() ? option.default_value :
-                                             value->second;
+    std::string current = value == selection.values.end() ? option.default_value :
+                                                             value->second;
+    /* A choice whose required feature was turned off moves to the first
+     * choice still offered (not the value its distinct_from option holds),
+     * and stays there. */
+    auto offered = [&](const Choice& choice) {
+        return choice.requires.empty() || feature_enabled_ref(runtime, choice.requires);
+    };
+    for (const Choice& choice : option.choices) {
+        if (choice.value != current || offered(choice)) continue;
+        std::string other;
+        if (!option.distinct_from.empty()) {
+            const auto held = selection.values.find(option.distinct_from);
+            const Option* rival = find_option(package, feature.id, option.distinct_from);
+            other = held != selection.values.end() ? held->second :
+                    rival ? rival->default_value : std::string();
+        }
+        for (const Choice& fallback : option.choices) {
+            if (!offered(fallback) || fallback.value == other) continue;
+            current = fallback.value;
+            selection.values[option.id] = current;
+            break;
+        }
+        break;
+    }
+    return current;
 }
 
 std::string resource_path(Runtime& runtime, const Package& package,
@@ -2576,6 +2639,8 @@ int provider_feature_get(void*, int index,
     copy_text(out->author, package.author);
     copy_text(out->description, feature.description);
     copy_text(out->group, feature.group);
+    out->order = (int)feature.order;
+    out->locked = !feature.follows_any.empty();
     out->enabled = feature_enabled(state(), package, feature);
     if (package.builtin_diagnostic) {
         out->hidden = !tier2_capture_exposed();
@@ -2646,6 +2711,14 @@ int provider_feature_choice_get(
     std::memset(out, 0, sizeof(*out));
     copy_text(out->value, option->choices[(size_t)index].value);
     copy_text(out->label, option->choices[(size_t)index].label);
+    const Feature* feature = find_feature(*package, feature_id);
+    const Option* other = option->distinct_from.empty() ? nullptr :
+        find_option(*package, feature_id, option->distinct_from.c_str());
+    if (feature && other)
+        out->disabled = option_value(state(), *package, *feature, *other) ==
+                        option->choices[(size_t)index].value;
+    const std::string& requires = option->choices[(size_t)index].requires;
+    if (!requires.empty() && !feature_enabled_ref(state(), requires)) out->disabled = 1;
     return 1;
 }
 
@@ -2660,6 +2733,8 @@ int provider_feature_enable(void*, const char* package_id,
     const Package* package = selected_package(state(), package_id);
     const Feature* feature = package ? find_feature(*package, feature_id) : nullptr;
     if (!feature) return 0;
+    /* A following feature has no switch of its own. */
+    if (!feature->follows_any.empty()) return 1;
     FeatureSelection& selection =
         package_selection(state(), *package).features[feature_id];
     selection.enabled = enabled != 0;

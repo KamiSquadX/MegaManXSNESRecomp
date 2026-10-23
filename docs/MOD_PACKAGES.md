@@ -97,6 +97,16 @@ feature = "widescreen"
 id = "example.widescreen"
 ```
 
+The launcher lists features by `group`, then by name. An optional integer
+`order` (default 0) on a feature comes before the name: lower values are
+listed first, so `order = 1` places a feature after every unordered one in
+its group.
+
+`follows_any = "package:feature package:feature"` makes a feature enabled
+exactly while any of the listed features is; the launcher shows its checkbox
+locked. A choice may carry `requires = "package:feature"`: it is offered
+only while that feature is enabled, greyed out otherwise.
+
 Options use the same feature-oriented concepts exposed by recomp-ui:
 
 ```toml
