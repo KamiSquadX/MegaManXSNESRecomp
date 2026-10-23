@@ -1862,6 +1862,7 @@ static void zero_state_checks(const char *assets, const char *fixture, uint8 *st
   check(!g_mmx_custom_renderer && !MmxZeroEnabled(), "disabling returns to stock presentation");
   puts("MMX ZERO RUNTIME CHECKS PASSED");
 }
+#include "mmx_frame_cost_test.inc"
 int main(int argc, char **argv) {
   check(argc == 2 || argc == 3, "ROM supplied");
   SDL_SetMainReady();
@@ -1955,6 +1956,25 @@ int main(int argc, char **argv) {
   size_t cap = 2u * 1024u * 1024u;
   uint8 *start = malloc(cap), *expected = malloc(cap), *actual = malloc(cap);
   if(getenv("MMX_ZERO_BLOCKS_TEST")) {zero_blocks_checks(getenv("MMX_ZERO_TEST_ASSETS"));return 0;}
+  if (getenv("MMX_FRAME_COST_TEST")) {
+    frame_cost_checks(start, expected, actual, cap);
+    return 0;
+  }
+  if (getenv("MMX_NETPLAY_FIXTURE_OUT")) {
+    /* Create a current-build fixture through normal boot and landing. The
+     * general save/rewind test's slot can be a menu or transition snapshot. */
+    hitbox_boot();
+    unsigned waited;
+    for (waited = 0; waited < 600; ++waited) {
+      if (g_ram[0xba9] == 2 && !g_ram[0xbaa] && (g_ram[0xbd3] & 4) &&
+          (g_ram[0xbcf] & 127)) break;
+      frame(0);
+    }
+    check(waited < 600, "fresh Highway fixture stands on real ground");
+    check(RtlSaveSnapshot(getenv("MMX_NETPLAY_FIXTURE_OUT")), "fresh netplay fixture saves");
+    puts("MMX NETPLAY FIXTURE CREATED");
+    return 0;
+  }
   if(getenv("MMX_MAGIC_CARPET_TEST")) {magic_carpet_checks(getenv("MMX_MAGIC_CARPET_TEST"),start,expected,actual,cap);return 0;}
   if(getenv("MMX_BOSS_RUSH_TEST")) {rush_runtime_checks(start,expected,actual,cap);return 0;}
   if(getenv("MMX_ZERO_SABER_PERF_TEST")) {
