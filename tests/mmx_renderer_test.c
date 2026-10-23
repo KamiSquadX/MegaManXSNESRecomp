@@ -1738,6 +1738,7 @@ static void rush_static_and_streamed_graphics(void) {
   }
   MmxBossRushReset();g_mmx_custom_renderer=false;MmxRendererSetRom(NULL,0);
 }
+#include "mmx_coop_weapon_graphics_test.inc"
 static void weapons_menu_margins(void) {
   memset(&ppu, 0, sizeof(ppu)); memset(ram, 0, sizeof(ram));
   MmxRendererReset(); MmxRendererSetRom(NULL, 0);
@@ -1778,4 +1779,4 @@ static void rush_results_page(void) {
   assert((output[48*256+92]&0xffffff)==0x00ffff);
   MmxBossRushReset();
 }
-int main(void) { geometry(); raster_and_hud(); immutable_vram_raster(); stage_map_draw_lifetime(); sprite_coordinates(); independent_oam_visibility(); expanded_capacity(); background_resources(); dialogue_and_password(); highway_arena_sky(); highway_airship_binding(); distant_doors(); storm_background_prefill(); resource_decode(); spark_effects(); airport_panorama_edge(); airport_upper_sky_repair(); wide_water_plane(); buried_submarine(); background_continuations(); launch_background_palettes(); sting_background_palettes(); mammoth_background_palettes(); dialogue_backdrop(); fortress_actor_presentation(); storm_dormant_presentation(); sprite_priority_and_cutscene_binding(); weapons_menu_margins(); zero_blink_submission(); rush_private_pose_graphics(); rush_static_and_streamed_graphics(); rush_results_page(); return 0; }
+int main(void) { geometry(); raster_and_hud(); immutable_vram_raster(); stage_map_draw_lifetime(); sprite_coordinates(); independent_oam_visibility(); expanded_capacity(); background_resources(); dialogue_and_password(); highway_arena_sky(); highway_airship_binding(); distant_doors(); storm_background_prefill(); resource_decode(); spark_effects(); airport_panorama_edge(); airport_upper_sky_repair(); wide_water_plane(); buried_submarine(); background_continuations(); launch_background_palettes(); sting_background_palettes(); mammoth_background_palettes(); dialogue_backdrop(); fortress_actor_presentation(); storm_dormant_presentation(); sprite_priority_and_cutscene_binding(); weapons_menu_margins(); zero_blink_submission(); rush_private_pose_graphics(); rush_static_and_streamed_graphics(); rush_results_page(); coop_special_graphics(); return 0; }

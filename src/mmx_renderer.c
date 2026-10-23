@@ -47,8 +47,8 @@ static MmxBossRushState frame_rush;
 static MmxBossRushVisualState frame_rush_visual;
 typedef struct Piece {
   int16_t x, y; uint16_t attr; uint8_t size, animation;
-  /* Palette occupies bits 1..3; the five spare bits retain charged-shot
-   * pose 0..20 at submission, without changing the capture record size. */
+  /* Palette occupies bits 1..3; the five spare bits retain native-shot
+   * pose 0..31 at submission, without changing the capture record size. */
   uint8_t tile, palette_pose; uint16_t object;
 } Piece;
 static unsigned piece_pose(const Piece *p) {
@@ -256,7 +256,7 @@ static Piece make_piece(const uint8_t *p, int x, int y, unsigned flip,
   y += flip & 0x80 ? -(int8_t)p[2] - size : (int8_t)p[2];
   unsigned attr = (((p[4] & 0xce) | attributes) ^ flip) << 8;
   attr |= (p[3] + base) & 255;
-  unsigned retained_pose=(animation==0x0e || animation==0x9e) ? pose&31 : 0;
+  unsigned retained_pose=object>=0x1228 && object<0x1428 ? pose&31 : 0;
   return (Piece){(int16_t)x, (int16_t)y, (uint16_t)attr, (uint8_t)size,
       (uint8_t)animation, p[3], (uint8_t)((p[4]&14)|(retained_pose&1)|((retained_pose&30)<<3)), (uint16_t)object};
 }
@@ -1756,16 +1756,17 @@ static void coop_partner_row(const Ppu *ppu,const Raster *r,int y,MmxRenderView 
       Piece s = make_piece(a+j*4,x,sy,ram[d+17]&64,ram[d+17]&63,ram[d+24],group,d,ram[d+23]&127);
       const MmxSpriteAsset *asset=!zero && weapon_colors && zero_actor(d,group) &&
           (s.attr&0x0e00) ? &weapon_palette : NULL;
-      /* Normal Spark and its two wall fragments share original group $47.
-       * Another seat can replace the shared $6200/$6300 weapon upload. */
-      if(d>=0x1228 && ram[d+10]==0x0c && group==0x47 && (s.attr&0x0e00)==0x0600)
-        asset=MmxRenderAssetsWeaponX(6,false);
+      unsigned tile=s.tile;
+      if(d>=0x1228) {
+        const MmxSpriteAsset *shot=MmxRenderAssetsNativeShot(ram,d,group,ram[d+23]&127,frame_coop.current^1);
+        if(shot) {asset=shot;tile=s.attr&255;}
+      }
       if(d>=0x1228 && ((ram[d+10]==3 && group==0x9e) ||
           ((ram[d+10]==1 || ram[d+10]==2) && group==0x0e))) {
         const MmxSpriteAsset *beam=MmxRenderAssetsChargedBuster(group,ram[d+23]&127);
         if(beam) asset=beam;
       }
-      sprite(ppu,zero?r:&partner_raster,s.x,s.y,s.attr,s.size,y,view,objects,false,asset,s.tile,colors,true,false,false);
+      sprite(ppu,zero?r:&partner_raster,s.x,s.y,s.attr,s.size,y,view,objects,false,asset,tile,colors,true,false,false);
     }
   }
 }
@@ -2217,6 +2218,10 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       bool coop_buster=stage && frame_coop.initialized && s.object>=0x1228 && s.object<0x1428 &&
           ((frame.ram[s.object+10]==3 && s.animation==0x9e) ||
            ((frame.ram[s.object+10]==1 || frame.ram[s.object+10]==2) && s.animation==0x0e));
+      const MmxSpriteAsset *coop_special=stage && frame_coop.initialized &&
+          s.object>=0x1228 && s.object<0x1428 &&
+          !frame_weapon_combat.shots[(s.object-0x1228)/64].active ?
+          MmxRenderAssetsNativeShot(frame.ram,s.object,s.animation,piece_pose(&s),frame_coop.current) : NULL;
       bool menu_body = s.object == 0x1988 && (s.animation == 0 || s.animation == 0x18);
       bool zero_body = zero && (s.object == 0xba8 || menu_body);
       bool triad_x_body=cast_body && !zero && s.object==0xba8;
@@ -2227,7 +2232,7 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       bool zero_armor = zero && (s.object == 0xc38 || s.object == 0xc58 || s.object == 0xc78 ||
           (zero_menu && (s.object == 0x1928 || s.object == 0x1948 || s.object == 0x1968)));
       bool oam_match = false;
-      if (g_mmx_render_asset_repairs || coop_buster || zero_body || zero_armor || zero_charge || swap_actor || red_ready || red_death || triad_x_body || triad_armor || frozen_enemy) for (int slot = 16; slot < 128; ++slot) {
+      if (g_mmx_render_asset_repairs || coop_buster || coop_special || zero_body || zero_armor || zero_charge || swap_actor || red_ready || red_death || triad_x_body || triad_armor || frozen_enemy) for (int slot = 16; slot < 128; ++slot) {
         unsigned pos = r->oam[slot * 2], hi = r->high_oam[slot / 4] >> (slot % 4 * 2);
         int ox = (pos & 255) | ((hi & 1) << 8); if (ox >= 256) ox -= 512;
         if (ox == s.x && (pos >> 8) == ((unsigned)s.y & 255) && r->oam[slot * 2 + 1] == s.attr) {
@@ -2355,14 +2360,13 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
        * the boots. */
       if ((frame_zero.active_x || knc_bugfix) && weapon_colors && zero_actor(s.object, s.animation) &&
           (menu || ((attr & 0x0e00) == 0x0200 && (!x_charging(frame.ram) || knc_bugfix)))) asset = &x_weapon_palette;
-      if(stage && frame_coop.initialized && s.object>=0x1228 && s.object<0x1428 &&
-          frame.ram[s.object+10]==0x0c && s.animation==0x47 && (s.attr&0x0e00)==0x0600)
-        asset=MmxRenderAssetsWeaponX(6,false);
+      if(coop_special) asset=coop_special;
       if(coop_buster) {
         const MmxSpriteAsset *beam=MmxRenderAssetsChargedBuster(s.animation,piece_pose(&s));
         if(beam) asset=beam;
       }
-      sprite(&p, r, s.x, s.y, attr, s.size, y, view, objects, !center, asset, s.tile, object_colors, true, false, red_ready || red_death);
+      sprite(&p, r, s.x, s.y, attr, s.size, y, view, objects, !center, asset,
+          coop_special?s.attr&255:s.tile, object_colors, true, false, red_ready || red_death);
     }
     if (stage) coop_partner_row(&p,r,y,view,objects,object_colors);
     int bar_first = -1, bar_count = 0;

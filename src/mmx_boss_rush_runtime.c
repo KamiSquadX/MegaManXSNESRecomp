@@ -615,6 +615,7 @@ void MmxBossRushAfterFrame(uint8_t *r) {
   MmxBossRushSetState(&s);
   for(unsigned i=0;i<2;++i) if(s.bosses[i].phase==MMX_RUSH_FIGHTING && !s.bosses[i].health)
     MmxBossRushDefeat(i);
+  MmxCoopResumeHurtTimers(r);
   bool alive=(r[0xbcf]&127)!=0;
   bool death_complete=r[0xbaa]==12 && r[0xbab]>=6;
   if(s.coop) {
