@@ -44,13 +44,11 @@ static const ButtonDef kGbPadButtons[] = {
 
 // ---- panel composition --------------------------------------------------------
 // Dashboard stays common (game + controller; the save row folds into the GAME
-// card like GBA/SNES — one .sav per cartridge, no slot grid). Settings is
-// video + audio ONLY: gb-recompiled's in-game hotkeys (savestate slots,
-// fullscreen, turbo) are fixed in the runner and read no launcher-editable
-// config, so — like Genesis — offering a hotkey editor here would write a file
-// the game never reads. The controller rebind page IS honest: game buttons
+// card like GBA/SNES — one .sav per cartridge, no slot grid). Settings exposes
+// video, audio and an optional System panel for hosts that require a BIOS.
+// Fixed runtime hotkeys have no launcher editor. Game button bindings
 // persist through keybinds.ini, which the runtime reads (gb_binds.c bridge).
-static const char* const kPanelsSettingsGb[] = { "video", "audio", NULL };
+static const char* const kPanelsSettingsGb[] = { "video", "audio", "system", NULL };
 
 // ---- screen-model (LCD palette + SGB) vocabulary --------------------------------
 // Indices 0..4 mirror the gb-recompiled runtime's DMG colorization palette list
@@ -77,14 +75,15 @@ static const char* const kGbRomPatterns[] = { "*.gb", "*.gbc", "*.sgb" };
 
 // ---- shared video shape (both profiles) -----------------------------------------
 // Integer window scale + linear-filter toggle (base rows), the LCD palette
-// cycle (screen_kind), and fullscreen-on-launch. No BIOS (gb-recompiled boots
-// its bundled/HLE boot ROM), no widescreen by default (per-game opt-in, e.g.
+// cycle (screen_kind), and fullscreen-on-launch. A host can require a real
+// BIOS with has_bios; legacy/HLE hosts leave that availability off. No
+// widescreen by default (per-game opt-in, e.g.
 // Megaman Xtreme 2's extended view sets widescreen_supported=1).
 #define LNG_GB_VIDEO_SPEC {                                                    \
     /*window_scale*/1, /*fullscreen*/1, /*linear_filter*/1, /*widescreen*/0,   \
     /*renderer*/0, /*supersampling*/0, /*screen_kind*/0, /*frame_interp*/0, /*aspect*/0, \
     /*texture_filter*/0, /*antialiasing*/0, /*spu_hq*/0, /*skip_fmv*/0, /*turbo_loads*/0, \
-    /*bios*/0, /*deadzone*/0,                                                   \
+    /*bios*/1, /*deadzone*/0,                                                   \
 }
 
 // ---- SystemProfile rows (gb = DMG branding, gbc = color branding) ---------------
@@ -164,7 +163,8 @@ static inline void launcher_profile_apply_gb_common(RecompLauncherCGameInfo* gi)
     gi->rom_noun = "ROM";
     gi->num_players = 1;               // handheld: one player (no link cable yet)
     // gb settings surface: integer window scale + linear filter (base rows),
-    // the LCD palette cycle, and fullscreen-on-launch. No BIOS picker.
+    // the LCD palette cycle, and fullscreen-on-launch. The host supplies
+    // has_bios and verification when its build requires real firmware.
     gi->has_screen_kind       = 1;
     // widescreen_supported stays 0: per-game opt-in (Megaman Xtreme 2's
     // extended view); stock titles render the native 160x144.

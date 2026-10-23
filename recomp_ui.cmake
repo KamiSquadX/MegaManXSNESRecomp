@@ -55,6 +55,43 @@ endif()
 
 set(RUI_SRC    ${RECOMP_UI_ROOT}/src)
 set(RUI_IMGUI  ${RUI_SRC}/third_party/imgui)
+
+# Windows: launcher executables carry windows/recomp_utf8.manifest, which makes
+# the process code page UTF-8. The file pickers return UTF-8 and the C side
+# opens paths with fopen; without it a ROM, BIOS or install folder with a
+# non-ASCII name ("Recompilé") cannot be opened, or aborts in std::filesystem.
+# enable_language must run at file scope, not inside the function below.
+if(WIN32 AND NOT MSVC)
+    enable_language(RC)
+endif()
+
+function(_recomp_ui_utf8_manifest TGT)
+    if(NOT WIN32)
+        return()
+    endif()
+    get_target_property(_type ${TGT} TYPE)
+    if(NOT _type STREQUAL "EXECUTABLE")
+        return()   # a resource in a library is dropped at link
+    endif()
+    # One application manifest per executable: the linker refuses to merge
+    # two. A host that already embeds one (snesrecomp's runner sources do)
+    # keeps its own.
+    get_target_property(_srcs ${TGT} SOURCES)
+    foreach(_src IN LISTS _srcs)
+        if(_src MATCHES "\\.manifest$" OR _src MATCHES "manifest\\.rc$")
+            return()
+        endif()
+    endforeach()
+    set(_manifest "${RECOMP_UI_ROOT}/windows/recomp_utf8.manifest")
+    if(MSVC)
+        target_sources(${TGT} PRIVATE "${_manifest}")
+    else()
+        set(_rc "${CMAKE_CURRENT_BINARY_DIR}/${TGT}_recomp_utf8_manifest.rc")
+        file(WRITE "${_rc}.in" "1 24 \"${_manifest}\"\n")
+        configure_file("${_rc}.in" "${_rc}" COPYONLY)
+        target_sources(${TGT} PRIVATE "${_rc}")
+    endif()
+endfunction()
 set(RUI_ASSETS ${RECOMP_UI_ROOT}/assets)
 include("${RECOMP_UI_ROOT}/cmake/recomp_ui_assets.cmake")
 include("${RECOMP_UI_ROOT}/cmake/recomp_gl.cmake")
@@ -98,6 +135,7 @@ function(recomp_target_launcher_ui TGT)
         ${ARGN})
 
     set_target_properties(${TGT} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+    _recomp_ui_utf8_manifest(${TGT})
 
     # ImGui provider. Normally recomp-ui compiles its OWN vendored Dear ImGui
     # (fully self-contained — the SNES/PSX/GBA standalone consumers). But an

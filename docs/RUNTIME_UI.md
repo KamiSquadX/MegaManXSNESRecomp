@@ -102,6 +102,24 @@ Selection is the model's alone: the ImGui window takes no keyboard/gamepad
 navigation of its own (`ImGuiWindowFlags_NoNavInputs`, except while a text row
 is edited), or Enter / A would also activate the row under ImGui's own cursor.
 
+### Host-drawn presentations
+
+A host that has to draw the menu in its own style -- a panel built into a
+game's own pause screen, a toolkit other than ImGui -- reads the model through
+`recomp_runtime_ui_view_row_count`, `_view_selected_row` and `_view_row`
+instead of duplicating it. A row view carries the item (NULL for a section or
+folder row), its label, its value formatted exactly as the built-in
+presentations format it, and whether it is enabled. Input still goes through
+`recomp_runtime_ui_handle_input`, so navigation, choice stepping, actions and
+the `save` callback behave the same in every presentation.
+
+`recomp_runtime_ui_open_section(ui, name)` opens straight onto one section's
+page, for a one-page menu with no section list. Set
+`RecompRuntimeUiConfig.navigation_flags` to
+`RECOMP_RUNTIME_UI_NAVIGATION_SKIP_DISABLED` when a disabled row should be
+shown but never take the selection; zero keeps the default, where every row
+can.
+
 ## What “every recomp-ui game” requires
 
 Consuming recomp-ui is the anchor, but updating the git submodule alone cannot

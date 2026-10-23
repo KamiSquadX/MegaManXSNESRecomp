@@ -121,6 +121,31 @@ int rc = recomp_launcher_run_window("My Game — Launcher", &io, &gi,
 #endif
 ```
 
+#### Telling players which ROM they picked
+
+A bare fingerprint can only say "ROM not recognized". List the dumps players
+actually confuse with yours in `gi.rom_revisions` and the launcher names them:
+
+```c
+static const RecompLauncherCRomRevision kRevisions[] = {
+    /* label, sha256, sha1, crc32, supported, note */
+    {"My Game (USA) (Rev 1)", "b8f7...", NULL, NULL, 1, NULL},
+    {"My Game (USA)", NULL, "449a...", "1033EBA4", 0,
+     "This is the original release; this build needs Rev 1."},
+};
+gi.rom_revisions = kRevisions; gi.num_rom_revisions = 2;
+gi.rom_help = "Headered (.smc) and headerless (.sfc) dumps both work.";
+```
+
+Digests cover the image after any copier/iNES header. A supported entry
+verifies the ROM (alongside `expected_crc` / `known_sha256` / `known_sha1_hex`);
+any other match shows "Wrong ROM: This is My Game (USA). My Game needs My Game
+(USA) (Rev 1) (SHA-256 ...)". A file nothing matches shows an optional
+`gi.rom_describe` host probe's description (e.g. the internal header's title
+and version) and the requirement. ZIP/7z/RAR/gzip archives and
+unreadable files get their own message, and **Copy details** puts the file's
+SHA-256/SHA-1/CRC32 and the requirement on the clipboard for bug reports.
+
 For the SNES profile, this entry point loads launcher preferences from
 `gi.config_path` (default `config.ini`) and saves edited settings on **Play,
 Quit, and Relaunch**. A host that ignores `io` on Quit therefore no longer
@@ -626,7 +651,13 @@ LNG_VARIANT=genesis ./build/recomp-ui-launcher
 [`src/launcher_debug.h`](src/launcher_debug.h)).
 
 Requires SDL3 (`find_package(SDL3 CONFIG)`) by default, OpenGL, and a C++17
-compiler. Configure with `-DSNESRECOMP_SDL_BACKEND=SDL2` to exercise the
+compiler.
+
+On Windows, `recomp_target_launcher_ui()` embeds `windows/recomp_utf8.manifest`
+in the executable (unless the host already embeds a manifest). It sets the
+process code page to UTF-8, so the UTF-8 paths the pickers return open through
+`fopen` and `std::filesystem` alike, including folders such as `Recompilé`.
+Windows older than 10 1903 ignores it, and the launcher logs a warning. Configure with `-DSNESRECOMP_SDL_BACKEND=SDL2` to exercise the
 supported SDL2 fallback.
 
 ---

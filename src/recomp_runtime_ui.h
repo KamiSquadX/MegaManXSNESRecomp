@@ -23,6 +23,7 @@ extern "C" {
 #define RECOMP_RUNTIME_UI_HAS_STATUS 1
 #define RECOMP_RUNTIME_UI_HAS_TOAST 1
 #define RECOMP_RUNTIME_UI_HAS_CONFIRM 1
+#define RECOMP_RUNTIME_UI_HAS_VIEW 1
 
 typedef struct RecompRuntimeUi RecompRuntimeUi;
 
@@ -154,10 +155,25 @@ typedef struct RecompRuntimeUiConfig {
      * coupling the shared UI to a particular operating system.
      */
     uint32_t presentation_flags;
+
+    /*
+     * Opt-in navigation policy (RECOMP_RUNTIME_UI_NAVIGATION_*). Zero keeps
+     * the default, where every row can take the selection.
+     */
+    uint32_t navigation_flags;
 } RecompRuntimeUiConfig;
 
 enum {
     RECOMP_RUNTIME_UI_PRESENTATION_TOUCH_FRIENDLY = UINT32_C(1) << 0,
+};
+
+enum {
+    /*
+     * Up/Down pass over item rows whose is_enabled callback reports 0, and
+     * entering a page selects its first enabled row, so a disabled setting is
+     * shown but never highlighted. Section and folder rows stay selectable.
+     */
+    RECOMP_RUNTIME_UI_NAVIGATION_SKIP_DISABLED = UINT32_C(1) << 0,
 };
 
 typedef uint64_t RecompRuntimeUiStandardFeatures;
@@ -297,6 +313,35 @@ int recomp_runtime_ui_confirm(RecompRuntimeUi *ui,
  */
 void recomp_runtime_ui_set_toast(RecompRuntimeUi *ui, const char *title, const char *body);
 int  recomp_runtime_ui_toast_visible(const RecompRuntimeUi *ui);
+
+/*
+ * Opens the menu inside `section`, so a one-page menu skips the section list.
+ * Back at that page's root climbs to the section list as usual. Returns 0, and
+ * changes nothing, when no section has that name.
+ */
+int recomp_runtime_ui_open_section(RecompRuntimeUi *ui, const char *section);
+
+/*
+ * Read-only view of the open page, for a host that draws the menu in its own
+ * style (a panel built into a game's own screens, a different UI toolkit)
+ * while the model keeps navigation, enabled state and persistence. The rows
+ * are the ones the built-in presentations list: the section names until a
+ * section is entered, then the page's items and folder rows.
+ */
+typedef struct RecompRuntimeUiRowView {
+    const RecompRuntimeUiItem *item; /* NULL for a section or folder row */
+    char label[96];   /* the item's label, or the section/folder name */
+    /* The value as the built-in presentations format it ("On", a choice
+     * label, a number, ">" for an action); "" for a section or folder row. */
+    char value[96];
+    int enabled;
+} RecompRuntimeUiRowView;
+
+size_t recomp_runtime_ui_view_row_count(const RecompRuntimeUi *ui);
+size_t recomp_runtime_ui_view_selected_row(const RecompRuntimeUi *ui);
+/* Fills *out for `row`; returns 0 for a row past the end. */
+int recomp_runtime_ui_view_row(RecompRuntimeUi *ui, size_t row,
+                               RecompRuntimeUiRowView *out);
 
 /*
  * Composites the menu over a little-endian SDL_PIXELFORMAT_ARGB8888/BGRA frame.

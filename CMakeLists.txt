@@ -39,6 +39,7 @@ if(SNESRECOMP_SDL_BACKEND STREQUAL "SDL3")
 elseif(SNESRECOMP_SDL_BACKEND STREQUAL "SDL2")
     find_package(SDL2 REQUIRED)
     set(RUI_SDL_TARGET SDL2::SDL2)
+    set(RUI_SDL_DEFS SDL_MAIN_HANDLED=1)
     get_target_property(RUI_SDL2_TARGET_TYPE SDL2::SDL2 TYPE)
     if(RUI_SDL2_TARGET_TYPE STREQUAL "SHARED_LIBRARY")
         set(RUI_SDL_RUNTIME_TARGET SDL2::SDL2)
@@ -145,6 +146,16 @@ if(BUILD_TESTING)
         COMMAND $<TARGET_FILE:recomp-ui-launcher-files-spawn-test>
                 "${CMAKE_CURRENT_BINARY_DIR}")
 
+    # Compile the Android picker contract on the host too. The tri-state
+    # unavailable result must reach the in-app browser, never desktop helpers.
+    add_executable(recomp-ui-launcher-files-android-test
+        tests/launcher_files_android_test.c
+        src/common/launcher_files.c
+        src/third_party/tinyfiledialogs.c)
+    target_compile_definitions(recomp-ui-launcher-files-android-test PRIVATE __ANDROID__)
+    target_include_directories(recomp-ui-launcher-files-android-test PRIVATE src src/common)
+    add_test(NAME recomp-ui-launcher-files-android COMMAND recomp-ui-launcher-files-android-test)
+
     # The blocking launcher_pick_* wrappers must not come back into a UI
     # backend: they hide "no usable native picker" as "user cancelled", which
     # is how 14 Browse buttons shipped dead on Linux. ui_pick() is the only
@@ -216,6 +227,13 @@ if(BUILD_TESTING)
         src/common/recomp_runtime_settings.c)
     target_include_directories(recomp-runtime-ui-test PRIVATE src)
     add_test(NAME recomp-runtime-ui COMMAND $<TARGET_FILE:recomp-runtime-ui-test>)
+
+    add_executable(recomp-runtime-ui-view-test
+        tests/runtime_ui_view_test.c
+        src/common/recomp_runtime_ui.c)
+    target_include_directories(recomp-runtime-ui-view-test PRIVATE src)
+    add_test(NAME recomp-runtime-ui-view
+             COMMAND $<TARGET_FILE:recomp-runtime-ui-view-test>)
 
     # psxrecomp in-game menu provider (src/consoles/psx/psx_menu_provider.cpp)
     # against a fake host. Needs the psxrecomp runtime include dir for
@@ -498,6 +516,10 @@ if(BUILD_TESTING)
         NAME recomp-ui-nds-profile
         COMMAND $<TARGET_FILE:recomp-ui-nds-profile-test>)
 
+    add_executable(recomp-ui-gb-profile-test tests/gb_profile_test.c)
+    target_include_directories(recomp-ui-gb-profile-test PRIVATE src src/common)
+    add_test(NAME recomp-ui-gb-profile COMMAND $<TARGET_FILE:recomp-ui-gb-profile-test>)
+
     add_executable(recomp-ui-assist-pad-capture-test
         tests/launcher_assist_pad_capture_test.c
         src/common/launcher_model.c
@@ -590,6 +612,24 @@ if(BUILD_TESTING)
                      "${CMAKE_CURRENT_BINARY_DIR}/launcher-rom-persistence-test")
     set_tests_properties(recomp-ui-launcher-rom-persistence PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/launcher-rom-persistence-test")
+
+    add_executable(recomp-ui-launcher-rom-identity-test
+        tests/launcher_rom_identity_test.c
+        src/common/launcher_model.c
+        src/common/crc32.c
+        src/common/sha1.c
+        src/common/sha256.c
+        src/common/ips_patch.c
+        src/consoles/psx/memcard_format.c)
+    target_include_directories(recomp-ui-launcher-rom-identity-test PRIVATE
+        src src/common src/consoles/psx)
+    set_target_properties(recomp-ui-launcher-rom-identity-test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/launcher-rom-identity-test")
+    add_test(NAME recomp-ui-launcher-rom-identity
+             COMMAND $<TARGET_FILE:recomp-ui-launcher-rom-identity-test>
+                     "${CMAKE_CURRENT_BINARY_DIR}/launcher-rom-identity-test")
+    set_tests_properties(recomp-ui-launcher-rom-identity PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/launcher-rom-identity-test")
 
     add_executable(recomp-ui-launcher-in-session-test
         tests/launcher_in_session_test.c

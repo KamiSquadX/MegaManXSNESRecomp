@@ -58,7 +58,9 @@ bool launcher_pick_rom(char* out_path, size_t out_cap);
 
 // Whether a blocking native picker is available. This is always true on
 // Windows/macOS. On Linux it reports zenity/kdialog availability so a GUI
-// backend can use its own in-app browser when neither is installed.
+// backend can use its own in-app browser when neither is installed. Android
+// reports false and returns -1 from tri-state pickers, selecting that browser
+// for app-owned files; host setup imports external documents through SAF.
 bool launcher_native_file_picker_available(void);
 
 // Open the OS "choose a folder" dialog (for the MSU-1 music folder). Returns

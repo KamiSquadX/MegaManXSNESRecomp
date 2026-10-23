@@ -51,6 +51,9 @@ extern "C" {
 #define RECOMP_LAUNCHER_HAS_VSYNC 1
 /* Host may #ifdef this when reading Settings.virtual_stylus. */
 #define RECOMP_LAUNCHER_HAS_VIRTUAL_STYLUS 1
+/* Host may #ifdef this when filling GameInfo.rom_revisions / rom_help /
+ * rom_describe (RecompLauncherCRomRevision). */
+#define RECOMP_LAUNCHER_HAS_ROM_REVISIONS 1
 #define RECOMP_LAUNCHER_MAX_BINDINGS 24
 #define RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS 8
 
@@ -1691,6 +1694,23 @@ typedef struct RecompLauncherCDisc {
     const char* path;
 } RecompLauncherCDisc;
 
+/* One catalogued dump of a cartridge title, so the launcher can say WHICH ROM
+ * the player picked instead of only "not recognized". A port lists the dump
+ * it was built from (supported = 1) and the ones players commonly confuse it
+ * with: other revisions, other regions, collection re-releases, even sibling
+ * games. Digests cover the image with any copier/iNES header stripped, as
+ * hex (any case); NULL/"" leaves a digest out. An entry matches when every
+ * digest it gives equals the file's, so give at least one. A supported match
+ * verifies the ROM; any other match is reported by label, with `note`. */
+typedef struct RecompLauncherCRomRevision {
+    const char* label;       /* "Mega Man X (USA) (Rev 1)" */
+    const char* sha256_hex;
+    const char* sha1_hex;
+    const char* crc32_hex;
+    int         supported;   /* 1 = this build runs it */
+    const char* note;        /* shown when this one is picked; NULL: none */
+} RecompLauncherCRomRevision;
+
 typedef struct RecompLauncherCGameInfo {
     const char*    name;
     const char*    region;
@@ -2388,6 +2408,23 @@ typedef struct RecompLauncherCGameInfo {
     const int*         texture_filter_values;
     int                num_texture_filters;
 
+    /* ---- ROM identification (cartridge consoles) ---------------------------
+     * rom_revisions: catalog of known dumps (see RecompLauncherCRomRevision).
+     * Supported entries verify alongside expected_crc / known_sha256 /
+     * known_sha1_hex; the others turn "not recognized" into "this is X, this
+     * build needs Y (SHA-256 ...)". Borrowed for the launcher's lifetime.
+     * rom_help: one line added whenever a picked ROM is not accepted, e.g.
+     * which headers are fine. NULL: none.
+     * rom_describe: optional host probe for a ROM no entry matches; given the
+     * header-stripped image, write a short description of what it appears to
+     * be (an internal header's title and version) and return 1, else 0.
+     * Appended for ABI stability. */
+    const RecompLauncherCRomRevision* rom_revisions;
+    int                num_rom_revisions;
+    const char*        rom_help;
+    int (*rom_describe)(void* ctx, const uint8_t* image, size_t len,
+                        char* out, size_t out_size);
+    void*              rom_describe_ctx;
     /* SNES only: the title reads a modern pad's extra controls (L2, R2, L3,
      * R3 and the right stick's four directions) beside the SNES twelve. The
      * controller page then offers those eight rows too, persisted as

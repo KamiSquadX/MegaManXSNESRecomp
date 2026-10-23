@@ -72,6 +72,18 @@ typedef enum {
     LNG_ACTION_RELAUNCH    // quit + host should exec rebuilt binary
 } LngAction;
 
+// What the launcher concluded about the picked cartridge ROM (verify.mode==0
+// consoles). Disc systems use VerifyResult instead and stay at NONE.
+typedef enum {
+    LNG_ROM_NONE = 0,          // nothing picked (or a disc system)
+    LNG_ROM_VERIFIED,          // matches a fingerprint this build accepts
+    LNG_ROM_UNCHECKED,         // readable, but the game gives no fingerprint
+    LNG_ROM_WRONG,             // a catalogued dump this build does not run
+    LNG_ROM_UNRECOGNIZED,      // matches nothing the game knows
+    LNG_ROM_ARCHIVE,           // a ZIP/7z/RAR/gzip archive, not a ROM
+    LNG_ROM_UNREADABLE,        // missing, empty or unreadable file
+} LngRomVerdict;
+
 // Representative subset of the SNES pad for the rebind UI. This enum is the
 // SNES-specific naming still used for keybinds.ini's engine-side defaults
 // (kP1Defaults/kButtonNames in launcher_model.c, kKbIndexSnes in
@@ -430,6 +442,13 @@ typedef struct {
     size_t          num_known_sha256;
     const char* const* known_sha1_hex;   // accepted SHA-1 (40-hex), cartridge gate
     size_t          num_known_sha1;
+    // GameInfo.rom_revisions / rom_help / rom_describe, borrowed.
+    const RecompLauncherCRomRevision* rom_revisions;
+    int             num_rom_revisions;
+    const char*     rom_help;
+    int (*rom_describe)(void* ctx, const uint8_t* image, size_t len,
+                        char* out, size_t out_size);
+    void*           rom_describe_ctx;
 
     // ---- controller pad-mode caps (PlayStation-style analog/digital) ----
     bool     pad_mode_supported;    // false => no selector/art swap; generic pad.tga
@@ -507,6 +526,12 @@ typedef struct {
     bool     crc_match;
     bool     sha_match;      // any known_sha256 matched
     bool     sha1_match;     // any known_sha1_hex matched
+    // Identification of the picked ROM, rebuilt by launcher_model_set_rom.
+    LngRomVerdict rom_verdict;
+    char     rom_sha256_hex[65];     // header-stripped image digests
+    char     rom_crc32_hex[9];
+    char     rom_identified[128];    // catalog label it matched ("" if none)
+    char     rom_detail[1024];       // player-facing explanation ("" if verified)
 
     // ---- multi-image disc roster (GameInfo.discs) ----
     // Borrowed build roster: which discs this game was compiled against.
@@ -796,10 +821,19 @@ void launcher_model_clear_rom_patch(LauncherModel* m);
 void launcher_model_toggle_rom_patch(LauncherModel* m);
 bool launcher_model_prepare_rom_patch(LauncherModel* m);
 
-// True iff a ROM is loaded and every fingerprint the game provides (CRC and/or
-// SHA-256) matches. If the game provides no fingerprint at all, returns false
-// (we can't vouch for an unknown ROM).
+// True iff a ROM is loaded and either every legacy fingerprint the game
+// provides (CRC, SHA-256, SHA-1) matches or it is a supported rom_revisions
+// entry. If the game provides no fingerprint at all, returns false (we can't
+// vouch for an unknown ROM).
 bool launcher_model_rom_verified(const LauncherModel* m);
+// True when the game gives any fingerprint, i.e. an unverified ROM is refused.
+bool launcher_model_rom_has_fingerprint(const LauncherModel* m);
+// Short headline for m->rom_verdict ("ROM verified", "Wrong ROM", ...), using
+// the game's rom_noun.
+void launcher_model_rom_headline(const LauncherModel* m, char* out, size_t cap);
+// Plain-text support report for the picked ROM: file, digests, verdict and
+// what the build needs. Returns the length written (snprintf semantics).
+int launcher_model_rom_report(const LauncherModel* m, char* out, size_t cap);
 
 // ---- navigation ----
 void launcher_model_set_view(LauncherModel* m, LngView v);

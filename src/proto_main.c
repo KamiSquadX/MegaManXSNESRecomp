@@ -682,6 +682,7 @@ int main(int argc, char** argv) {
     fprintf(stderr, "[proto] rom=%s present=%d crc_match=%d sha_match=%d verified=%d size=%s\n",
             rom, model.rom_present, model.crc_match, model.sha_match,
             launcher_model_rom_verified(&model), model.rom_size);
+    if (model.rom_detail[0]) fprintf(stderr, "[proto] rom: %s\n", model.rom_detail);
 
     LauncherTheme theme = launcher_theme_by_name(gi.theme);
 

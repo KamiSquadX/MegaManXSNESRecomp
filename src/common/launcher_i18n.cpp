@@ -82,6 +82,8 @@ static const LauncherI18nEntry kItalian[] = {
     {"Disc verified (warnings)", "Disco verificato (avvisi)"},
     {"Disc verification failed", "Verifica disco fallita"},
     {"Disc not recognized", "Disco non riconosciuto"},
+    {"Copy details", "Copia dettagli"},
+    {"Copy this file's checksums and the required ROM", "Copia i checksum di questo file e la ROM richiesta"},
     {"Skip (Play Unpatched)", "Salta (gioca senza patch)"},
     {"Patch ROM", "Applica patch ROM"},
     {"Insert...", "Inserisci..."},

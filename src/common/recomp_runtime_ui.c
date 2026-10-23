@@ -138,6 +138,23 @@ const RecompRuntimeUiItem *recomp_runtime_ui_page_entry(
     return item;
 }
 
+/* Whether `row` of the open page may take the selection. Folder rows always
+ * can; item rows can unless the host opted into skipping disabled ones. */
+static int row_selectable(const RecompRuntimeUi *ui, size_t row) {
+    if (!(ui->config.navigation_flags & RECOMP_RUNTIME_UI_NAVIGATION_SKIP_DISABLED))
+        return 1;
+    const RecompRuntimeUiItem *item = recomp_runtime_ui_page_entry(ui, row, NULL, 0);
+    return !item || recomp_runtime_ui_item_enabled(ui, item);
+}
+
+/* A freshly opened page starts on its first row that can take the selection. */
+static void select_first_row(RecompRuntimeUi *ui) {
+    const size_t count = recomp_runtime_ui_page_entry_count(ui);
+    ui->row_index = 0;
+    for (size_t row = 0; row < count; ++row)
+        if (row_selectable(ui, row)) { ui->row_index = row; return; }
+}
+
 int recomp_runtime_ui_enter_folder(RecompRuntimeUi *ui, size_t row) {
     if (!ui || ui->page_depth >= RECOMP_RUNTIME_UI_MAX_DEPTH) return 0;
     const char *name = NULL;
@@ -152,7 +169,7 @@ int recomp_runtime_ui_enter_folder(RecompRuntimeUi *ui, size_t row) {
     if (used) ui->page[at++] = '/';
     memcpy(ui->page + at, name, name_len);
     ui->page[at + name_len] = '\0';
-    ui->row_index = 0;
+    select_first_row(ui);
     return 1;
 }
 
@@ -423,9 +440,20 @@ int recomp_runtime_ui_toast_visible(const RecompRuntimeUi *ui) {
 void recomp_runtime_ui_enter_section(RecompRuntimeUi *ui, size_t section) {
     if (!ui || section >= ui->section_count) return;
     ui->section_index = section;
-    ui->row_index = 0;
     ui->in_section = 1;
     reset_page(ui);
+    select_first_row(ui);
+}
+
+int recomp_runtime_ui_open_section(RecompRuntimeUi *ui, const char *section) {
+    if (!ui || !section) return 0;
+    for (size_t i = 0; i < ui->section_count; ++i) {
+        if (!same_text(ui->sections[i], section)) continue;
+        recomp_runtime_ui_open(ui);
+        recomp_runtime_ui_enter_section(ui, i);
+        return 1;
+    }
+    return 0;
 }
 
 void recomp_runtime_ui_leave_section(RecompRuntimeUi *ui) {
@@ -465,10 +493,17 @@ int recomp_runtime_ui_handle_input(RecompRuntimeUi *ui,
     if (input == RECOMP_RUNTIME_UI_INPUT_UP ||
         input == RECOMP_RUNTIME_UI_INPUT_DOWN) {
         int delta = input == RECOMP_RUNTIME_UI_INPUT_UP ? -1 : 1;
-        size_t count = ui->in_section ? recomp_runtime_ui_page_entry_count(ui)
-                                      : ui->section_count;
-        size_t *selection = ui->in_section ? &ui->row_index : &ui->section_index;
-        *selection = wrap_index(*selection, delta, count);
+        if (!ui->in_section) {
+            ui->section_index = wrap_index(ui->section_index, delta,
+                                           ui->section_count);
+            return 1;
+        }
+        size_t count = recomp_runtime_ui_page_entry_count(ui);
+        size_t row = ui->row_index;
+        for (size_t step = 0; step < count; ++step) {
+            row = wrap_index(row, delta, count);
+            if (row_selectable(ui, row)) { ui->row_index = row; break; }
+        }
         return 1;
     }
     if (input == RECOMP_RUNTIME_UI_INPUT_ACCEPT) {
@@ -648,6 +683,39 @@ static void item_value(RecompRuntimeUi *ui, const RecompRuntimeUiItem *item,
     } else {
         snprintf(out, out_size, "%d", value);
     }
+}
+
+size_t recomp_runtime_ui_view_row_count(const RecompRuntimeUi *ui) {
+    if (!ui) return 0;
+    return ui->in_section ? recomp_runtime_ui_page_entry_count(ui)
+                          : ui->section_count;
+}
+
+size_t recomp_runtime_ui_view_selected_row(const RecompRuntimeUi *ui) {
+    if (!ui) return 0;
+    return ui->in_section ? ui->row_index : ui->section_index;
+}
+
+int recomp_runtime_ui_view_row(RecompRuntimeUi *ui, size_t row,
+                               RecompRuntimeUiRowView *out) {
+    if (!ui || !out || row >= recomp_runtime_ui_view_row_count(ui)) return 0;
+    memset(out, 0, sizeof(*out));
+    out->enabled = 1;
+    if (!ui->in_section) {
+        snprintf(out->label, sizeof(out->label), "%s", ui->sections[row]);
+        return 1;
+    }
+    const RecompRuntimeUiItem *item = recomp_runtime_ui_page_entry(
+        ui, row, out->label, sizeof(out->label));
+    if (!item) return 1;  /* a folder row: its name is already the label */
+    out->item = item;
+    snprintf(out->label, sizeof(out->label), "%s", item->label ? item->label : "");
+    out->enabled = recomp_runtime_ui_item_enabled(ui, item);
+    if (item->type == RECOMP_RUNTIME_UI_TEXT)
+        recomp_runtime_ui_current_text(ui, item, out->value, sizeof(out->value));
+    else
+        item_value(ui, item, out->value, sizeof(out->value));
+    return 1;
 }
 
 /* The toast in the frame's top rows: a panel sized to its longest line. */

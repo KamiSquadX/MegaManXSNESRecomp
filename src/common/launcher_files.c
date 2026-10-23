@@ -73,7 +73,7 @@ static int launcher_reject_if_pattern_mismatch(const char* title,
     return 1;
 }
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -660,7 +660,11 @@ static int linux_pick_folder(const char* title, char* out, size_t out_cap) {
 #endif /* __linux__ */
 
 bool launcher_native_file_picker_available(void) {
-#if defined(__linux__)
+#if defined(__ANDROID__)
+    /* Android hosts import external files through SAF. The shared launcher
+     * browses the imported files in-app; desktop helpers are unavailable. */
+    return false;
+#elif defined(__linux__)
     return linux_have_cmd("zenity") || linux_have_cmd("kdialog");
 #else
     return true;
@@ -671,7 +675,9 @@ bool launcher_pick_rom(char* out_path, size_t out_cap) {
     if (!out_path || out_cap == 0) return false;
     out_path[0] = '\0';
 
-#if defined(__linux__)
+#if defined(__ANDROID__)
+    return false;
+#elif defined(__linux__)
     {
         const int r = linux_pick_open("Select game file", NULL, 0, NULL,
                                       out_path, out_cap);
@@ -699,7 +705,10 @@ int launcher_try_pick_folder(const char* title, char* out_path, size_t out_cap) 
     if (!out_path || out_cap == 0) return -1;
     out_path[0] = '\0';
 
-#if defined(__linux__)
+#if defined(__ANDROID__)
+    (void)title;
+    return -1;
+#elif defined(__linux__)
     return linux_pick_folder(title, out_path, out_cap);
 #else
     {
@@ -722,7 +731,10 @@ int launcher_try_pick_file(const char* title, const char* const* patterns,
     if (!out_path || out_cap == 0) return -1;
     out_path[0] = '\0';
 
-#if defined(__linux__)
+#if defined(__ANDROID__)
+    (void)title; (void)patterns; (void)num_patterns; (void)desc;
+    return -1;
+#elif defined(__linux__)
     {
         const int r = linux_pick_open(title, patterns, num_patterns, desc,
                                       out_path, out_cap);
@@ -783,7 +795,10 @@ int launcher_try_pick_save_file(const char* title, const char* const* patterns,
     if (!out_path || out_cap == 0) return -1;
     out_path[0] = '\0';
 
-#if defined(__linux__)
+#if defined(__ANDROID__)
+    (void)title; (void)patterns; (void)num_patterns; (void)desc;
+    return -1;
+#elif defined(__linux__)
     return linux_pick_save(title, patterns, num_patterns, desc, out_path,
                            out_cap);
 #else

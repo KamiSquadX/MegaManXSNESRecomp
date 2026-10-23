@@ -12,6 +12,7 @@
 #include "sha1.h"
 #include "ips_patch.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
@@ -348,11 +349,27 @@ static int lm_load_cached_rom_path(const RecompLauncherCGameInfo* game,
     return 0;
 }
 
+#if defined(_WIN32)
+/* windows/recomp_utf8.manifest makes narrow paths UTF-8 to match the pickers.
+ * Windows older than 10 1903 ignores it; say so once, because a non-ASCII
+ * path then fails in ways that otherwise look unrelated. */
+static void lm_warn_non_utf8_code_page(void) {
+    static int warned;
+    if (warned || GetACP() == CP_UTF8) return;
+    warned = 1;
+    fprintf(stderr, "[launcher] process code page is %u, not UTF-8; paths with "
+                    "non-ASCII characters may not open\n", (unsigned)GetACP());
+}
+#endif
+
 void launcher_model_init(LauncherModel* m,
                          const RecompLauncherCSettings* io,
                          const RecompLauncherCGameInfo* game,
                          const char* initial_rom) {
     memset(m, 0, sizeof(*m));
+#if defined(_WIN32)
+    lm_warn_non_utf8_code_page();
+#endif
 
     if (game) {
         m->game_name            = game->name ? game->name : "Unknown Game";
@@ -385,6 +402,11 @@ void launcher_model_init(LauncherModel* m,
         m->known_sha1_hex       = game->known_sha1_hex;
         m->num_known_sha1       = game->num_known_sha1;
         m->num_known_sha256     = game->num_known_sha256;
+        m->rom_revisions        = game->num_rom_revisions > 0 ? game->rom_revisions : NULL;
+        m->num_rom_revisions    = m->rom_revisions ? game->num_rom_revisions : 0;
+        m->rom_help             = game->rom_help;
+        m->rom_describe         = game->rom_describe;
+        m->rom_describe_ctx     = game->rom_describe_ctx;
 
         m->pad_mode_supported   = game->pad_mode_supported != 0;
         m->pad_mode_selectable  = game->pad_mode_selectable != 0;
@@ -1307,6 +1329,248 @@ int launcher_model_autofill_sibling_discs(LauncherModel* m) {
     return filled;
 }
 
+/* ---- cartridge ROM identification -------------------------------------- */
+
+static void lm_appendf(char* out, size_t cap, const char* fmt, ...) {
+    size_t len = strlen(out);
+    if (len + 1 >= cap) return;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(out + len, cap - len, fmt, ap);
+    va_end(ap);
+}
+
+/* Full-length, case-insensitive hex comparison; an empty `want` never matches. */
+static bool lm_hex_equal(const char* have, const char* want) {
+    if (!have || !want || !want[0]) return false;
+    size_t i = 0;
+    for (; have[i] && want[i]; ++i)
+        if (tolower((unsigned char)have[i]) != tolower((unsigned char)want[i]))
+            return false;
+    return have[i] == '\0' && want[i] == '\0';
+}
+
+static bool lm_revision_matches(const RecompLauncherCRomRevision* r,
+                                const char* sha256, const char* sha1,
+                                const char* crc) {
+    int given = 0;
+    if (r->sha256_hex && r->sha256_hex[0]) {
+        ++given;
+        if (!lm_hex_equal(sha256, r->sha256_hex)) return false;
+    }
+    if (r->sha1_hex && r->sha1_hex[0]) {
+        ++given;
+        if (!lm_hex_equal(sha1, r->sha1_hex)) return false;
+    }
+    if (r->crc32_hex && r->crc32_hex[0]) {
+        ++given;
+        if (!lm_hex_equal(crc, r->crc32_hex)) return false;
+    }
+    return given > 0;
+}
+
+/* Archive containers players pick in place of the ROM inside them. */
+static const char* lm_archive_kind(const uint8_t* d, size_t n) {
+    if (n >= 4 && d[0] == 'P' && d[1] == 'K' &&
+        ((d[2] == 3 && d[3] == 4) || (d[2] == 5 && d[3] == 6) ||
+         (d[2] == 7 && d[3] == 8)))
+        return "ZIP";
+    if (n >= 6 && memcmp(d, "7z\xBC\xAF\x27\x1C", 6) == 0) return "7-Zip";
+    if (n >= 6 && memcmp(d, "Rar!\x1A\x07", 6) == 0) return "RAR";
+    if (n >= 2 && d[0] == 0x1F && d[1] == 0x8B) return "gzip";
+    return NULL;
+}
+
+static bool lm_has_supported_revision(const LauncherModel* m) {
+    for (int i = 0; i < m->num_rom_revisions; ++i)
+        if (m->rom_revisions[i].supported) return true;
+    return false;
+}
+
+/* What this build accepts: each supported catalog entry with its strongest
+ * digest, else the legacy fingerprint the game was built from. */
+static void lm_rom_requirement(const LauncherModel* m, char* out, size_t cap) {
+    out[0] = '\0';
+    int listed = 0;
+    for (int i = 0; i < m->num_rom_revisions; ++i) {
+        const RecompLauncherCRomRevision* r = &m->rom_revisions[i];
+        if (!r->supported) continue;
+        lm_appendf(out, cap, "%s%s", listed ? " or " : "",
+                   r->label && r->label[0] ? r->label : "the supported ROM");
+        if (r->sha256_hex && r->sha256_hex[0])
+            lm_appendf(out, cap, " (SHA-256 %s)", r->sha256_hex);
+        else if (r->sha1_hex && r->sha1_hex[0])
+            lm_appendf(out, cap, " (SHA-1 %s)", r->sha1_hex);
+        else if (r->crc32_hex && r->crc32_hex[0])
+            lm_appendf(out, cap, " (CRC32 %s)", r->crc32_hex);
+        ++listed;
+    }
+    if (listed) return;
+    if (m->num_known_sha256 > 0 && m->known_sha256) {
+        lm_appendf(out, cap, "the ROM it was built from (SHA-256 ");
+        for (int b = 0; b < 32; ++b)
+            lm_appendf(out, cap, "%02x", m->known_sha256[0][b]);
+        lm_appendf(out, cap, ")");
+    } else if (m->num_known_sha1 > 0 && m->known_sha1_hex && m->known_sha1_hex[0]) {
+        lm_appendf(out, cap, "the ROM it was built from (SHA-1 %s)",
+                   m->known_sha1_hex[0]);
+    } else if (m->has_expected_crc) {
+        lm_appendf(out, cap, "the ROM it was built from (CRC32 %08X)",
+                   (unsigned)m->expected_crc);
+    }
+}
+
+static void lm_set_rom_unreadable(LauncherModel* m, const char* why) {
+    m->rom_verdict = LNG_ROM_UNREADABLE;
+    safe_copy(m->rom_detail, sizeof(m->rom_detail), why);
+}
+
+/* Fingerprint the picked cartridge image and explain the result: verified,
+ * a known dump this build does not run (named), an archive, or unknown. */
+static void lm_identify_rom(LauncherModel* m, const uint8_t* buf, size_t n) {
+    /* Normalize container headers before fingerprinting.
+     * SNES .smc images may carry a 512-byte copier header;
+     * NES .nes images carry a 16-byte iNES/NES 2.0 header.
+     * NESRecomp's ROM and package CRCs intentionally cover
+     * every byte after that 16-byte header. */
+    size_t hdr = (n % 1024 == 512) ? 512 : 0;
+    if (n > 16 && buf[0] == 'N' && buf[1] == 'E' &&
+        buf[2] == 'S' && buf[3] == 0x1A) {
+        hdr = 16;
+    }
+    const uint8_t* body = buf + hdr;
+    size_t blen = n - hdr;
+    uint32_t crc = recompui_crc32_compute(body, blen);
+    uint8_t  sha[32], s1[20];
+    char     s1hex[41];
+    recompui_sha256_compute(body, blen, sha);
+    recompui_sha1_compute(body, blen, s1);
+    recompui_sha1_hex(s1, s1hex);
+    for (int b = 0; b < 32; ++b)
+        snprintf(m->rom_sha256_hex + b * 2, 3, "%02x", sha[b]);
+    snprintf(m->rom_crc32_hex, sizeof(m->rom_crc32_hex), "%08X", (unsigned)crc);
+    safe_copy(m->rom_sha1_hex, sizeof(m->rom_sha1_hex), s1hex);
+
+    m->crc_match = m->has_expected_crc && crc == m->expected_crc;
+    for (size_t k = 0; k < m->num_known_sha256; ++k)
+        if (memcmp(sha, m->known_sha256[k], 32) == 0) {
+            m->sha_match = true;
+            break;
+        }
+    /* SHA-1: cartridge identity gate (GBA/SNES). */
+    for (size_t k = 0; m->known_sha1_hex && k < m->num_known_sha1; ++k)
+        if (lm_hex_equal(s1hex, m->known_sha1_hex[k])) {
+            m->sha1_match = true;
+            break;
+        }
+
+    /* A supported entry outranks an unsupported one with the same digests. */
+    const RecompLauncherCRomRevision* hit = NULL;
+    for (int i = 0; i < m->num_rom_revisions; ++i) {
+        const RecompLauncherCRomRevision* r = &m->rom_revisions[i];
+        if (!lm_revision_matches(r, m->rom_sha256_hex, s1hex, m->rom_crc32_hex))
+            continue;
+        if (!hit || (r->supported && !hit->supported)) hit = r;
+    }
+    if (hit && hit->label)
+        safe_copy(m->rom_identified, sizeof(m->rom_identified), hit->label);
+
+    const bool legacy_fp = m->has_expected_crc || m->num_known_sha256 > 0 ||
+                           m->num_known_sha1 > 0;
+    const bool legacy_ok = legacy_fp &&
+                           (!m->has_expected_crc || m->crc_match) &&
+                           (!m->num_known_sha256 || m->sha_match) &&
+                           (!m->num_known_sha1 || m->sha1_match);
+    if (legacy_ok || (hit && hit->supported)) {
+        m->rom_verdict = LNG_ROM_VERIFIED;
+        return;
+    }
+    /* Only after the digests disagree: a ROM may begin with any bytes. */
+    const char* archive = hit ? NULL : lm_archive_kind(buf, n);
+    if (archive) {
+        const char* noun = (m->rom_noun && m->rom_noun[0]) ? m->rom_noun : "ROM";
+        m->rom_verdict = LNG_ROM_ARCHIVE;
+        snprintf(m->rom_detail, sizeof(m->rom_detail),
+                 "This is a %s archive, not a %s. Extract it first, then "
+                 "select the %s file that was inside.", archive, noun, noun);
+        return;
+    }
+    if (!legacy_fp && !lm_has_supported_revision(m)) {
+        m->rom_verdict = LNG_ROM_UNCHECKED;
+        return;
+    }
+
+    char need[640];
+    lm_rom_requirement(m, need, sizeof(need));
+    const char* game = m->game_name && m->game_name[0] ? m->game_name : "This game";
+    if (hit) {
+        m->rom_verdict = LNG_ROM_WRONG;
+        snprintf(m->rom_detail, sizeof(m->rom_detail), "This is %s. %s needs %s.",
+                 hit->label && hit->label[0] ? hit->label : "a different ROM",
+                 game, need);
+        if (hit->note && hit->note[0])
+            lm_appendf(m->rom_detail, sizeof(m->rom_detail), " %s", hit->note);
+    } else {
+        /* The file's own digests stay in Copy details; the panel says what
+         * the file looks like and what to get instead. */
+        char seen[256] = "";
+        m->rom_verdict = LNG_ROM_UNRECOGNIZED;
+        if (m->rom_describe &&
+            m->rom_describe(m->rom_describe_ctx, body, blen, seen, sizeof(seen)) &&
+            seen[0])
+            snprintf(m->rom_detail, sizeof(m->rom_detail),
+                     "This file matches no known dump. %s %s needs %s.",
+                     seen, game, need);
+        else
+            snprintf(m->rom_detail, sizeof(m->rom_detail),
+                     "This file matches no known dump: it may be another "
+                     "revision or region, a hack, a translation or a bad dump. "
+                     "%s needs %s.", game, need);
+    }
+    if (m->rom_help && m->rom_help[0])
+        lm_appendf(m->rom_detail, sizeof(m->rom_detail), " %s", m->rom_help);
+}
+
+bool launcher_model_rom_has_fingerprint(const LauncherModel* m) {
+    return m && (m->has_expected_crc || m->num_known_sha256 > 0 ||
+                 m->num_known_sha1 > 0 || lm_has_supported_revision(m));
+}
+
+void launcher_model_rom_headline(const LauncherModel* m, char* out, size_t cap) {
+    const char* noun = (m->rom_noun && m->rom_noun[0]) ? m->rom_noun : "ROM";
+    const char* fmt = m->rom_present ? "%s not recognized" : "No %s loaded";
+    switch (m->rom_verdict) {
+    case LNG_ROM_VERIFIED:     fmt = "%s verified"; break;
+    case LNG_ROM_UNCHECKED:    fmt = "%s not verified"; break;
+    case LNG_ROM_WRONG:        fmt = "Wrong %s"; break;
+    case LNG_ROM_UNRECOGNIZED: fmt = "%s not recognized"; break;
+    case LNG_ROM_ARCHIVE:      fmt = "Archive, not a %s"; break;
+    case LNG_ROM_UNREADABLE:   fmt = "%s unreadable"; break;
+    case LNG_ROM_NONE:         break;
+    }
+    snprintf(out, cap, fmt, noun);
+}
+
+int launcher_model_rom_report(const LauncherModel* m, char* out, size_t cap) {
+    if (!out || cap == 0) return 0;
+    out[0] = '\0';
+    char need[640], headline[64];
+    lm_rom_requirement(m, need, sizeof(need));
+    launcher_model_rom_headline(m, headline, sizeof(headline));
+    lm_appendf(out, cap, "%s: %s\n", m->game_name ? m->game_name : "", headline);
+    lm_appendf(out, cap, "File: %s\n", m->rom_present ? m->rom_full : "(none)");
+    if (m->rom_sha256_hex[0]) {
+        lm_appendf(out, cap, "SHA-256: %s\n", m->rom_sha256_hex);
+        lm_appendf(out, cap, "SHA-1: %s\n", m->rom_sha1_hex);
+        lm_appendf(out, cap, "CRC32: %s\n", m->rom_crc32_hex);
+    }
+    if (m->rom_identified[0])
+        lm_appendf(out, cap, "Identified as: %s\n", m->rom_identified);
+    if (need[0]) lm_appendf(out, cap, "Required: %s\n", need);
+    if (m->rom_detail[0]) lm_appendf(out, cap, "%s\n", m->rom_detail);
+    return (int)strlen(out);
+}
+
 void launcher_model_set_rom(LauncherModel* m, const char* path) {
     if (lm_is_sbi_path(path)) {
         char mounted[sizeof(m->rom_full)] = {0};
@@ -1343,9 +1607,15 @@ void launcher_model_set_rom(LauncherModel* m, const char* path) {
     m->crc_match = false;
     m->sha_match = false;
     m->sha1_match = false;
+    m->rom_verdict = LNG_ROM_NONE;
+    m->rom_sha256_hex[0] = '\0';
+    m->rom_crc32_hex[0] = '\0';
+    m->rom_identified[0] = '\0';
+    m->rom_detail[0] = '\0';
     const int disc_verify = m->profile && m->profile->verify.mode == 1;
     if (m->rom_present) {
         FILE* f = fopen(m->rom_full, "rb");
+        const bool opened = f != NULL;
         if (f) {
             fseek(f, 0, SEEK_END);
             long n = ftell(f);
@@ -1355,57 +1625,19 @@ void launcher_model_set_rom(LauncherModel* m, const char* path) {
                 if (!disc_verify) {
                     fseek(f, 0, SEEK_SET);
                     uint8_t* buf = (uint8_t*)malloc((size_t)n);
-                    if (buf && fread(buf, 1, (size_t)n, f) == (size_t)n) {
-                        /* Normalize container headers before fingerprinting.
-                         * SNES .smc images may carry a 512-byte copier header;
-                         * NES .nes images carry a 16-byte iNES/NES 2.0 header.
-                         * NESRecomp's ROM and package CRCs intentionally cover
-                         * every byte after that 16-byte header. */
-                        size_t hdr = ((size_t)n % 1024 == 512) ? 512 : 0;
-                        if ((size_t)n > 16 &&
-                            buf[0] == 'N' && buf[1] == 'E' &&
-                            buf[2] == 'S' && buf[3] == 0x1A) {
-                            hdr = 16;
-                        }
-                        const uint8_t* body = buf + hdr;
-                        size_t blen = (size_t)n - hdr;
-                        uint32_t crc = recompui_crc32_compute(body, blen);
-                        uint8_t  sha[32];
-                        recompui_sha256_compute(body, blen, sha);
-                        m->crc_match = m->has_expected_crc && crc == m->expected_crc;
-                        for (size_t k = 0; k < m->num_known_sha256; ++k)
-                            if (memcmp(sha, m->known_sha256[k], 32) == 0) {
-                                m->sha_match = true;
-                                break;
-                            }
-                        /* SHA-1: cartridge identity gate (GBA/SNES). */
-                        if (m->num_known_sha1 && m->known_sha1_hex) {
-                            uint8_t s1[20]; char s1hex[41];
-                            recompui_sha1_compute(body, blen, s1);
-                            recompui_sha1_hex(s1, s1hex);
-                            safe_copy(m->rom_sha1_hex,
-                                      sizeof(m->rom_sha1_hex), s1hex);
-                            for (size_t k = 0; k < m->num_known_sha1; ++k) {
-                                const char* want = m->known_sha1_hex[k];
-                                if (!want) continue;
-                                int eq = 1;
-                                for (int c = 0; c < 40 && eq; ++c) {
-                                    char a = s1hex[c], b = want[c];
-                                    if (b >= 'A' && b <= 'Z') b = (char)(b + 32);
-                                    if (a != b) eq = 0;
-                                }
-                                if (eq && want[40] == '\0') {
-                                    m->sha1_match = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                    if (buf && fread(buf, 1, (size_t)n, f) == (size_t)n)
+                        lm_identify_rom(m, buf, (size_t)n);
+                    else
+                        lm_set_rom_unreadable(m, "This file could not be read.");
                     free(buf);
                 }
             }
             fclose(f);
         }
+        if (!disc_verify && m->rom_verdict == LNG_ROM_NONE)
+            lm_set_rom_unreadable(m, !opened ? "This file could not be opened. "
+                                               "It may have been moved or deleted."
+                                             : "This file is empty.");
     }
     if (!m->rom_size[0]) safe_copy(m->rom_size, sizeof(m->rom_size), "--");
 
@@ -1478,15 +1710,7 @@ const char* launcher_model_effective_rom_path(const LauncherModel* m) {
 }
 
 bool launcher_model_rom_verified(const LauncherModel* m) {
-    if (!m->rom_present) return false;
-    const int has_crc  = m->has_expected_crc;
-    const int has_sha  = m->num_known_sha256 > 0;
-    const int has_sha1 = m->num_known_sha1 > 0;
-    if (!has_crc && !has_sha && !has_sha1) return false;   // no fingerprint => can't vouch
-    if (has_crc  && !m->crc_match)  return false;
-    if (has_sha  && !m->sha_match)  return false;
-    if (has_sha1 && !m->sha1_match) return false;
-    return true;
+    return m->rom_present && m->rom_verdict == LNG_ROM_VERIFIED;
 }
 
 void launcher_model_set_view(LauncherModel* m, LngView v) {
@@ -2492,7 +2716,7 @@ static void lm_persist_cart_rom(const LauncherModel* m) {
     if (m->setup_wizard_supported || m->num_discs > 1 ||
         (m->profile && m->profile->verify.mode == 1) ||
         !lm_path_readable(m->rom_full)) return;
-    if ((m->has_expected_crc || m->num_known_sha256 || m->num_known_sha1) &&
+    if (launcher_model_rom_has_fingerprint(m) &&
         !launcher_model_rom_verified(m)) return;
 #if defined(_WIN32)
     DWORD n = GetFullPathNameA(m->rom_full, (DWORD)sizeof(absolute), absolute, NULL);
@@ -3046,9 +3270,8 @@ bool launcher_model_can_launch(const LauncherModel* m) {
         /* Disc systems: reject none/bad; warn (2) and ok (1) are playable. */
         if (m->verify.verdict == 0 || m->verify.verdict == 3) return false;
     } else {
-        const int has_fp = m->has_expected_crc || m->num_known_sha256 > 0 ||
-                           m->num_known_sha1 > 0;
-        if (has_fp && !launcher_model_rom_verified(m)) return false;
+        if (launcher_model_rom_has_fingerprint(m) &&
+            !launcher_model_rom_verified(m)) return false;
     }
     if (m->has_bios && !m->setup_bios_ok) return false;
     if (m->setup_preparing) return false;
