@@ -927,6 +927,7 @@ static void rush_projectile_defeat(unsigned seat,unsigned weapon) {
   check(s.defeated==count+1,"native weapon finishing hit counts exactly one defeat");
 }
 #include "mmx_boss_rush_coop_combat_test.inc"
+#include "mmx_boss_rush_coop_isolation_test.inc"
 #include "mmx_boss_rush_reports_test.inc"
 #include "mmx_gravity_rush_test.inc"
 #include "mmx_boss_rush_pause_spawn_test.inc"
@@ -1123,6 +1124,8 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
     }
     saber_perf_checks("boss-rush",start,expected,actual,cap);return;
   }
+  if(getenv("MMX_BOSS_RUSH_COOP_WEAPON_TEST")) {rush_coop_weapon_checks(start,cap);return;}
+  if(getenv("MMX_BOSS_RUSH_COOP_ISOLATION_TEST")) {rush_coop_isolation_checks(start,cap);return;}
   if(getenv("MMX_BOSS_RUSH_COOP_COMBAT_TEST")) {rush_coop_combat_checks(start,expected,cap);return;}
   if(getenv("MMX_BOSS_RUSH_MENU_TEST")) {rush_return_title_checks();return;}
   if(getenv("MMX_BOSS_RUSH_STATE_FORMAT_TEST")) {rush_state_format_checks(start,expected,actual,cap);return;}

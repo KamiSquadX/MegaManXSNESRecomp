@@ -246,6 +246,16 @@ set `MMX_BOSS_RUSH_TEST=1` and pass the verified USA ROM to run the title-menu,
 28-pair entrance, replacement, 600-frame combat and snapshot-replay checks in
 an empty private working directory. Add `MMX_BOSS_RUSH_COOP=<private Zero asset
 file>` to run those checks in local co-op, including one-player and team deaths.
+`MMX_BOSS_RUSH_COOP_ISOLATION_TEST=1` checks real fatal boss contacts and damage
+to either survivor against all eight Mavericks. It separately restores an
+interrupted-hurt state after a partner death and verifies that the native
+protection countdown expires; active hurt, scripted locks, existing countdowns
+and charged Sting remain intact for both seats.
+`MMX_BOSS_RUSH_COOP_WEAPON_TEST=1` quick-switches both players through different
+native specials and fires normal and charged shots together. It checks private
+graphics for every visible projectile class and writes CSV traces and images.
+Both fixtures use the same co-op asset setting above; add
+`MMX_BOSS_RUSH_COOP_P1_ZERO=1` to exchange the two characters.
 `MMX_BOSS_RUSH_REPORT_TEST=1` checks issue #124: native death updates in both
 boss slots without permanent player protection, the retail subtank refill cap
 and empty-tank menu navigation, Penguin's native ice lock, and prolonged
