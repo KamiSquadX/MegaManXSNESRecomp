@@ -23,12 +23,41 @@ echo "=== launcher ==="
     "$ROOT/runner/src/launcher_cache.c" \
     "$ROOT/runner/src/launcher_picker.c" \
     "$ROOT/runner/src/rom_image_verify.c" \
+    "$ROOT/runner/src/rom_identity.c" \
     "$ROOT/runner/src/host_paths.c" \
     "$ROOT/runner/src/crc32.c" \
+    "$ROOT/runner/src/sha1.c" \
     "$ROOT/runner/src/sha256.c" \
     $LAUNCHER_LIBS \
     -o "$OUT/launcher_test"
 "$OUT/launcher_test"
+
+echo "=== ROM identity (wrong revision / unknown dump / archive messages) ==="
+"$CC" -std=c11 -Wall -Wextra -Werror -O1 \
+    -I "$ROOT/runner/src" \
+    "$ROOT/tests/launcher/rom_identity_test.c" \
+    "$ROOT/runner/src/rom_identity.c" \
+    "$ROOT/runner/src/crc32.c" \
+    "$ROOT/runner/src/sha1.c" \
+    "$ROOT/runner/src/sha256.c" \
+    -o "$OUT/rom_identity_test"
+(cd "$OUT" && ./rom_identity_test)
+
+echo "=== Windows UTF-8 process code page (non-ASCII install paths) ==="
+case "$(uname -s)" in
+    MINGW*|MSYS*)
+        # windres is a native program: hand it a Windows path.
+        MANIFEST="$ROOT/runner/windows/snesrecomp_utf8.manifest"
+        command -v cygpath >/dev/null 2>&1 && MANIFEST="$(cygpath -m "$MANIFEST")"
+        printf '1 24 "%s"\n' "$MANIFEST" > "$OUT/utf8_manifest.rc"
+        "${WINDRES:-windres}" "$OUT/utf8_manifest.rc" -O coff -o "$OUT/utf8_manifest.o"
+        "$CC" -std=c11 -Wall -Wextra -Werror -O1 \
+            "$ROOT/tests/host/utf8_codepage_test.c" "$OUT/utf8_manifest.o" \
+            -o "$OUT/utf8_codepage_test"
+        (cd "$OUT" && ./utf8_codepage_test)
+        ;;
+    *) echo "  (skipped: Windows only)" ;;
+esac
 
 echo "=== MSU soundtrack routing ==="
 "$CC" -std=c11 -Wall -Wextra -O1 \
@@ -428,9 +457,21 @@ echo "=== mod runtime: presentation_only is not compared by netplay ==="
     "$ROOT/runner/src/mod_runtime.cpp" \
     "$ROOT/runner/src/sha256.c" "$ROOT/runner/src/snes/tier2_capture.c" \
     "$ROOT/runner/src/crc32.c" \
+    "$ROOT/runner/src/rom_identity.c" "$ROOT/runner/src/sha1.c" \
     -o "$OUT/mod_presentation_only_test"
 rm -rf "$OUT/mod_presentation_only_fixture"
 "$OUT/mod_presentation_only_test" "$OUT/mod_presentation_only_fixture"
+
+echo "=== mod runtime: exceptions stay inside the C boundary ==="
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -O1 \
+    -I "$ROOT/runner/src" \
+    "$ROOT/tests/mod_resources/c_boundary_test.cpp" \
+    -x c++ "$ROOT/runner/src/mod_runtime.cpp" \
+    "$ROOT/runner/src/sha256.c" "$ROOT/runner/src/snes/tier2_capture.c" \
+    "$ROOT/runner/src/crc32.c" \
+    "$ROOT/runner/src/rom_identity.c" "$ROOT/runner/src/sha1.c" \
+    -o "$OUT/mod_c_boundary_test"
+(cd "$OUT" && ./mod_c_boundary_test)
 
 echo "=== host OSD (FPS readout / turbo / toasts) ==="
 # Needs SDL for its clock only (no window; SDL_INIT_TIMER). Skipped rather than
@@ -469,6 +510,7 @@ echo "=== account secret path (rebuild must not sign you out) ==="
     "$ROOT/lib/recomp-net/src/auth/rnet_auth.c" \
     "$ROOT/lib/recomp-net/src/auth/rnet_open_url.c" \
     "$ROOT/lib/recomp-net/src/auth/rnet_sha256.c" \
+    "$ROOT/lib/recomp-net/src/platform/rnet_platform.c" \
     -lpthread -o "$OUT/secret_path_test"
 "$OUT/secret_path_test"
 
