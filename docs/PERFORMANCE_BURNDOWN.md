@@ -474,12 +474,75 @@ history has advanced since the candidate bases: MMX main still pins engine
 `7a67b85`, SMW main pins `fa018f3` and has native co-op renderer changes, and
 SM main pins `3cbd954` with newer runtime/release changes. Preserve those
 upstream improvements during any later main-branch integration; the owner's
-choice of landing target was requested while qualified commits are prepared.
+choice of landing target was requested while qualified commits were prepared.
 Launch links: `playtests/SuperMarioWorld/Play.cmd`,
 `playtests/SuperMetroid/Play.cmd`, and optional updated
 `playtests/MegaManX/Play.cmd`. `playtests/RESULTS.txt` records scope and limits.
 Central Beads updates are recorded locally; defer the next expensive sync
 until competing ecosystem builds are quiet, then sync before integration.
+
+### Current-main integration and Boss Rush follow-up
+
+The owner selected current-main integration and automated requalification.
+This supersedes the pending target choice above. The original approved
+packages, progress and exact revisions remain preserved; current-main
+integration uses separate worktrees in the private bundle's `current-main`.
+Framework PR #209 landed the shared helper as merge `2c311b0`; all seven
+active Windows/Linux/macOS/Lua CI checks passed. The helper alone is also
+backported atop the current title pins: MMX `bb156e1`, SMW `4c5c7dc`, and
+SM `7b8cc25`. Modern SMW/SM already provide `Ppu.vramWriteCount`, so their
+new integration reuses it rather than adding a duplicate PPU counter.
+
+Current-main qualification results (2026-10-22):
+
+- MMX starts at main `99450ef`, preserving its newer Zero and camera fixes.
+  GCC Release with recomp-net/rbengine and ICE builds successfully. All 31
+  registered CTests have no failures (29 pass, two optional donor-asset
+  checks skip). Magic Carpet passes at all three aspects and the no-shot
+  negative control. Nine current-main full-copy/optimized Magic Carpet BMP
+  pairs match exactly. Independent and unified gameplay peers agree after
+  real rollback/replay with imported weapon contexts. Audio-enabled desktop
+  rollback, delay sync and forced host-state/slot repair pass, without offline
+  autosave pollution. Automated sound output is muted through SDL dummy audio.
+- SMW starts at main `6c773d6`, preserving its co-op renderer. Two complete
+  stock generations are byte-identical; the Release app and all three
+  standalone renderer variants pass. At 4:3, 16:9 and 32:9, full-copy versus
+  optimized routes match 21 BMPs, draw lists, sprite traces and 4000 semantic
+  frame rows per aspect. Actual Mods Fit/adaptive spawning matches another
+  seven captures and 4000 rows. Current-build file-load functional partitions
+  pass under the documented clock-reanchoring contract, without claiming
+  full-chip rollback equivalence. Title PR: mstan/SuperMarioWorldRecomp#24.
+- SM starts at main `b4bedbd`, preserving runtime, diagnostic replay and
+  release changes. Strict full regeneration is idempotent; Release and all
+  14 CTests pass. Stock/wide/120 Hz simulation traces match over 3200 frames,
+  with nine matching fixed source/trace/BMP artifacts. Actual Mods Fit and
+  rewind match. Audio-enabled Ceres stock/wide routes match over 11000 frames
+  and reach changing guest-generated Mode 7 matrices; nine fixed-alpha/aspect
+  image pairs match. The fixture bypasses prerequisites/position, not proof
+  of natural completion. Title PR: mstan/SuperMetroidRecomp#31.
+
+The owner's slot 01 report was Spark Mandrill already outside the Boss Rush
+arena. A separate correctness bug was reproduced: Start on the native boss
+death frame enters the weapon menu, whose coroutine temporarily clears the
+live camera before publishing its menu flags. The replacement timer could
+then create the next boss at X=$00C0. Saved arena ownership now gates the
+replacement timer/spawn; normal combat and Mammoth scrolling remain intact.
+The regression exercises 90 pause offsets for each replacement seat (180
+cases), confirms in-arena creation and actual entrance into combat. It passes
+on both the approved base and current main. Baseline fix `0b8be10` is applied
+to current main as `8e0524d`. The owner's original snapshot is untouched;
+this prevents future bad creation and does not relocate its already escaped
+actor. Details: `docs/boss-rush.md`, tracker `beads-8wg.1.145`.
+
+Current-main evidence is in `mmx-ctest.log`, `mmx-pixels-qualified`,
+`mmx-net-independent`, `mmx-net-unified`, `mmx-desktop-*`, `smw-qualified2`,
+`smw-fit-qualified-current`, `sm-qualified`, `sm-ceres-qualified` and
+`sm-fit-qualified-current`. Full-copy references use the documented build
+options with otherwise identical current-main objects. These are correctness
+reruns, not new performance estimates. Earlier balanced NAS timings remain
+the headroom estimate for the approved older baseline. Xbox runtime and full
+campaign coverage remain unverified. At this checkpoint the helper is merged;
+the three current-main title branches await publication/CI/merge completion.
 
 ## Reusable discovery checklist
 
@@ -539,7 +602,7 @@ to resume. Carry forward the measured method, invariance/restore/netplay
 gates, rejected probes and scope limits; each ecosystem must find its own
 bottlenecks.
 
-### Pause checkpoint
+### Historical pause checkpoint (superseded by P6 above)
 
 Historical checkpoint: the owner subsequently said "You may continue".
 Work has resumed; see P6 above for the newer qualification/package results.
