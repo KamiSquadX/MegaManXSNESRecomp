@@ -929,6 +929,7 @@ static void rush_projectile_defeat(unsigned seat,unsigned weapon) {
 #include "mmx_boss_rush_coop_combat_test.inc"
 #include "mmx_boss_rush_reports_test.inc"
 #include "mmx_gravity_rush_test.inc"
+#include "mmx_boss_rush_pause_spawn_test.inc"
 static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual,size_t cap) {
   const char *coop_assets=getenv("MMX_BOSS_RUSH_COOP");
   const char *zero_assets=getenv("MMX_BOSS_RUSH_ZERO");
@@ -1112,6 +1113,7 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
     puts("MMX BOSS RUSH ARENA CHECKS PASSED");
     return;
   }
+  if(getenv("MMX_BOSS_RUSH_PAUSE_SPAWN_TEST")) {rush_pause_spawn_checks(start,expected,cap);return;}
   if(getenv("MMX_BOSS_RUSH_REPORT_TEST")) {rush_report_checks(start,expected,cap);return;}
   if(getenv("MMX_BOSS_RUSH_GRAVITY_TEST")) {rush_gravity_checks(start,expected,actual,cap);return;}
   if(getenv("MMX_ZERO_SABER_PERF_TEST")) {

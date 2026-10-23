@@ -264,6 +264,14 @@ if(TARGET mmx_state_tests)
                 $<TARGET_FILE:mmx_state_tests> "${CMAKE_CURRENT_SOURCE_DIR}/mmx.sfc")
         set_tests_properties(mmx_boss_rush_reports PROPERTIES
             WORKING_DIRECTORY "${rush_report_dir}" LABELS "rom;boss-rush")
+        set(rush_pause_spawn_dir "${CMAKE_CURRENT_BINARY_DIR}/boss-rush-pause-spawn")
+        file(MAKE_DIRECTORY "${rush_pause_spawn_dir}")
+        add_test(NAME mmx_boss_rush_pause_spawn
+            COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy MMX_REPLAY_RECORD=0
+                MMX_BOSS_RUSH_TEST=1 MMX_BOSS_RUSH_PAUSE_SPAWN_TEST=1
+                $<TARGET_FILE:mmx_state_tests> "${CMAKE_CURRENT_SOURCE_DIR}/mmx.sfc")
+        set_tests_properties(mmx_boss_rush_pause_spawn PROPERTIES
+            WORKING_DIRECTORY "${rush_pause_spawn_dir}" LABELS "rom;boss-rush")
         foreach(carpet_case native widescreen ultrawide no_shot)
             set(carpet_env)
             if(carpet_case STREQUAL "widescreen")

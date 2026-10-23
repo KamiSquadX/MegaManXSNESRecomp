@@ -465,3 +465,22 @@ distinguishes these layouts by their bounded tail lengths. The ROM-backed
 v19/v20, combined v21, file/memory imports and byte-exact immediate restoration.
 This format compatibility does not establish multiplayer compatibility between
 builds; the existing build identity checks remain in place.
+
+## Replacement spawns during weapon-menu entry (2026-10-22)
+
+A boss defeated as the native weapon menu opens could be replaced at X `$00C0`
+instead of inside the `$1E00` arena. The menu coroutine clears the live camera
+before publishing its menu flags; the replacement controller previously used
+that temporary camera as its spawn origin. The owner's slot 01 identified
+Spark Mandrill, already fighting at `$1093,$017A` after spawning outside.
+
+Replacement timers now wait for a stage scene and an arena camera. Entrance
+placement also bounds the camera to the encounter's saved origin/range. This
+works with expanded weapons disabled and preserves normal scrolling entrances.
+It does not clamp native boss attacks or change the renderer.
+
+The real-ROM `mmx_boss_rush_pause_spawn` test covers 90 pause offsets in each
+replacement slot. It drives native zero-HP death, checks the queued boss's first
+coordinates, closes the menu, and requires the native entrance to reach combat.
+The original failing timing and untouched owner save are retained privately;
+no native in-game save data is changed. Tracking: `beads-8wg.1.145`.
