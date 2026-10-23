@@ -45,6 +45,8 @@ bool MmxOptionsScreenActive(void);
  * dash window) answers a double tap too. Runs on the recorded word, so
  * replays and netplay reproduce it. */
 bool MmxOptionsFrameBegin(uint32_t *inputs);
+/* Host frame_end: Axl's post-frame work, then the replay. */
+void MmxOptionsFrameEnd(void);
 
 #ifdef __cplusplus
 }

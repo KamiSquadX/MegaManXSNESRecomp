@@ -89,6 +89,8 @@ static MmxRendererPlayerOverlayProvider player_overlay_provider;
 static MmxRenderPlayerOverlay frame_player_overlay;
 /* The co-op partner seat's Zero, drawn from partner_ram rather than OAM. */
 static MmxRenderPlayerOverlay frame_partner_overlay;
+static MmxRendererAxlProvider axl_provider;
+static MmxRenderAxlFrame frame_axl;
 enum { MAX_WORLD_SPRITES = 8 };
 static MmxRendererWorldSpriteProvider world_sprite_provider;
 static MmxRenderWorldSprite frame_world_sprites[MAX_WORLD_SPRITES];
@@ -175,6 +177,10 @@ void MmxRendererSetRom(const uint8_t *bytes, size_t length) {
   rom = bytes; rom_size = length; MmxRenderAssetsSetRom(bytes, length);
   MmxCoopViewsSetRom(bytes,length);
   MmxRenderAssetsPreloadRush();
+}
+void MmxRendererSetAxlProvider(MmxRendererAxlProvider provider) {
+  axl_provider = provider;
+  memset(&frame_axl, 0, sizeof(frame_axl));
 }
 void MmxRendererSetPlayerOverlayProvider(
     MmxRendererPlayerOverlayProvider provider) {
@@ -513,6 +519,12 @@ void MmxRendererBeginFrame(const uint8_t ram[0x20000]) {
     frame_player_overlay = overlay;
   else
     memset(&frame_player_overlay, 0, sizeof(frame_player_overlay));
+  memset(&frame_axl, 0, sizeof(frame_axl));
+  frame_axl.special = -1;
+  if (!axl_provider || !axl_provider(ram, &frame_axl)) {
+    memset(&frame_axl, 0, sizeof(frame_axl));
+    frame_axl.special = -1;
+  }
   memset(world_sprites, 0, sizeof(world_sprites));
   if (world_sprite_provider)
     world_sprite_count = world_sprite_provider(world_sprites,
@@ -524,12 +536,15 @@ void MmxRendererBeginFrame(const uint8_t ram[0x20000]) {
     memcpy(frame_world_sprites, world_sprites,
            world_sprite_count * sizeof(*frame_world_sprites));
   memset(debug_rects, 0, sizeof(debug_rects));
-  /* The developer overlay outlines every object, a superset of any
-   * mod's own debug boxes, so it takes the frame when both are on. */
-  MmxRendererDebugRectProvider rects =
-      hitbox_overlay_provider ? hitbox_overlay_provider : debug_rect_provider;
-  if (rects)
-    debug_rect_count = rects(debug_rects, MAX_DEBUG_RECTS);
+  /* The developer overlay outlines every native object. A mod's own boxes
+   * (Saber Zero's slashes are not native objects) are drawn after it. */
+  if (hitbox_overlay_provider)
+    debug_rect_count = hitbox_overlay_provider(debug_rects, MAX_DEBUG_RECTS);
+  if (debug_rect_count > MAX_DEBUG_RECTS)
+    debug_rect_count = MAX_DEBUG_RECTS;
+  if (debug_rect_provider && debug_rect_count < MAX_DEBUG_RECTS)
+    debug_rect_count += debug_rect_provider(debug_rects + debug_rect_count,
+                                            MAX_DEBUG_RECTS - debug_rect_count);
   if (debug_rect_count > MAX_DEBUG_RECTS)
     debug_rect_count = MAX_DEBUG_RECTS;
   frame_debug_rect_count = debug_rect_count;
@@ -1267,6 +1282,7 @@ static uint16_t background(const Ppu *p, const Raster *r, unsigned layer, int x,
   unsigned priority = tile & 0x2000 ? (layer == 2 && (p->bgmode & 8) ? 15 : high[layer]) : low[layer];
   return (uint16_t)((priority << 12) | (layer << 8) | index);
 }
+static int axl_badge_color(unsigned x, unsigned y);
 static void sprite(const Ppu *p, const Raster *r, int x, int sy, unsigned attr, int size,
                     int y, MmxRenderView view, uint16_t *out, bool margins_only,
                     const MmxSpriteAsset *asset, unsigned raw_tile, int *object_color,
@@ -1291,7 +1307,8 @@ static void sprite(const Ppu *p, const Raster *r, int x, int sy, unsigned attr, 
       pixel = ((bits[0] >> shift) & 1) | (((bits[1] >> shift) & 1) << 1) |
           (((bits[16] >> shift) & 1) << 2) | (((bits[17] >> shift) & 1) << 3);
     } else pixel = tile_pixel(r->vram, base + tile * 16, cx & 7, row & 7, 4);
-    int hud_color = zero_icon ? MmxZeroHudColor(cx, row) : -1;
+    int hud_color = !zero_icon ? -1 : frame_axl.badge.pixels ? axl_badge_color(cx, row) :
+        MmxZeroHudColor(cx, row);
     if (hud_color >= 0) pixel = 1;
     else if (hud_color == -2) pixel = 0;
     if (pixel) {
@@ -1522,6 +1539,10 @@ static void weapon_effects_row(const MmxWeaponCombatState *combat,const Ppu *p,c
         (s->y>>8)-view_camera(frame.ram,0x1e50),y,view,objects,object_colors);
   }
 }
+static void player_overlay_plane_row(
+    const MmxRenderPlayerOverlayPlane *plane, const uint16_t *palette,
+    unsigned palette_count, int y, int zx, int zy, bool mirror, unsigned z,
+    MmxRenderView view, uint16_t *objects, int *object_colors);
 static void teleport_actor_row(const uint8_t *ram,const MmxZeroState *zero,const Ppu *p,
                                const Raster *r,int y,MmxRenderView view,uint16_t *objects,int *object_colors) {
   unsigned pose = MmxZeroSwapPose(zero);
@@ -1539,6 +1560,10 @@ static void teleport_actor_row(const uint8_t *ram,const MmxZeroState *zero,const
         object_colors[dx] = MmxZeroColors()[pixel];
       }
     }
+  } else if (ram == frame.ram && frame_axl.teleport.pixels) {
+    /* Axl on X's body. */
+    player_overlay_plane_row(&frame_axl.teleport, frame_axl.body.palette, frame_axl.body.palette_count,
+        y, x, sy + 1, !flip, ((2 * 4 + 2) << 12) | 0x680, view, objects, object_colors);
   } else {
     const MmxSpriteAsset *a = MmxRenderAssetsTeleportX(pose);
     const uint8_t *layout = a ? sprite_arrangement(0,pose) : NULL;
@@ -1586,10 +1611,6 @@ static void prepare_partner_graphics(void) {
     for(unsigned i=0;i<size;i+=2) partner_raster.vram[dest+i/2]=(uint16_t)word(bytes,i);
   }
 }
-static void player_overlay_plane_row(
-    const MmxRenderPlayerOverlayPlane *plane, const uint16_t *palette,
-    unsigned palette_count, int y, int zx, int zy, bool mirror, unsigned z,
-    MmxRenderView view, uint16_t *objects, int *object_colors);
 static void player_overlay_row(const MmxRenderPlayerOverlay *overlay, int y,
                                int zx, int zy, unsigned z, MmxRenderView view,
                                uint16_t *objects, int *object_colors) {
@@ -1601,6 +1622,82 @@ static void player_overlay_row(const MmxRenderPlayerOverlay *overlay, int y,
   if (overlay->blade_layer == 2)
     player_overlay_plane_row(&overlay->blade, overlay->palette, overlay->palette_count,
         y, zx, zy, overlay->facing_left, z, view, objects, object_colors);
+}
+static uint32_t debug_rgb555(uint16_t color);
+/* GigaCrash over one output pixel (0x00RRGGBB): the scene behind the
+ * sprites darkens, and the streak overlay blends in at half strength. */
+static void axl_giga_pixel(uint32_t *pixel, int x, int y, bool sprite) {
+  uint32_t c = *pixel;
+  unsigned r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+  if (!sprite && frame_axl.screen_dim) {
+    unsigned keep = 8u - (frame_axl.screen_dim > 7 ? 7u : frame_axl.screen_dim);
+    r = r * keep / 8; g = g * keep / 8; b = b * keep / 8;
+  }
+  const MmxRenderPlayerOverlayPlane *s = &frame_axl.screen;
+  if (s->pixels && x >= 0 && x < 256) {
+    int col = x - (128 + s->origin_x - 64), row = y - (112 + s->origin_y - 64);
+    if (col >= 0 && col < s->width && row >= 0 && row < s->height) {
+      unsigned i = s->pixels[row * s->width + col];
+      if (i && i < frame_axl.body.palette_count && frame_axl.body.palette) {
+        uint32_t o = debug_rgb555(frame_axl.body.palette[i]);
+        r = (r + ((o >> 16) & 255)) / 2; g = (g + ((o >> 8) & 255)) / 2; b = (b + (o & 255)) / 2;
+      }
+    }
+  }
+  *pixel = (r << 16) | (g << 8) | b;
+}
+/* Add Axl: his body, his shots and his armor ability bar. */
+/* Axl's health bar badge over X's 16x16 one: 14 columns from column 1. */
+static int axl_badge_color(unsigned x, unsigned y) {
+  const MmxRenderPlayerOverlayPlane *b = &frame_axl.badge;
+  if (x < 1 || x - 1 >= b->width || y >= b->height) return -2;
+  unsigned i = b->pixels[y * b->width + x - 1];
+  return i && i < frame_axl.body.palette_count ? frame_axl.body.palette[i] : -2;
+}
+/* The pause menu's life head is BG tiles: cover X's 16x16 head with the
+ * menu backdrop beside it, then draw Axl's 18x16 head over it. */
+static void axl_life_head(uint32_t *out, MmxRenderView view) {
+  const MmxRenderPlayerOverlayPlane *l = &frame_axl.life;
+  if (!frame_axl.menu || !l->pixels || view.extra < 0) return;
+  for (int y = 142; y < 158 && y < MMX_RENDER_HEIGHT; ++y) {
+    uint32_t *row = out + y * view.width + view.extra;
+    for (int x = 196; x < 212; ++x) row[x] = row[194];
+    for (int x = 0; x < l->width && y - 142 < l->height; ++x) {
+      unsigned i = l->pixels[(y - 142) * l->width + x];
+      if (i && i < frame_axl.body.palette_count) row[195 + x] = debug_rgb555(frame_axl.body.palette[i]);
+    }
+  }
+}
+static void axl_row(int y, MmxRenderView view, uint16_t *objects, int *object_colors) {
+  const MmxRenderAxlFrame *a = &frame_axl;
+  unsigned z = ((2 * 4 + 2) << 12) | 0x680;
+  int cx = a->title ? 0 : (int)view_camera(frame.ram, 0x1e4d);
+  int cy = a->title ? 0 : (int)view_camera(frame.ram, 0x1e50);
+  for (unsigned i = 0; i < a->sprite_count && i < MMX_RENDER_AXL_SPRITES; ++i) {
+    const MmxRenderAxlSprite *s = &a->sprites[i];
+    player_overlay_plane_row(&s->plane, a->body.palette, a->body.palette_count, y,
+        (int)(s->x - cx), (int)(s->y - cy), s->facing_left, z, view, objects, object_colors);
+  }
+  /* The pause menu's portrait, where X stands at $1988 (128, 160). */
+  if (a->menu) player_overlay_plane_row(&a->portrait, a->body.palette, a->body.palette_count,
+      y, 128, 161, false, z, view, objects, object_colors);
+  if (a->body.active) {
+    int ax = a->title ? a->screen_x : (int16_t)(word(frame.ram, 0xbad) - cx);
+    int ay = a->title ? a->screen_y : (int16_t)(word(frame.ram, 0xbb0) - cy) + 1;
+    player_overlay_row(&a->body, y, ax, ay, z, view, objects, object_colors);
+  }
+  /* The armor ability bar: left of the health bar (x 9..22, which the HUD
+   * keeps at the screen edge in widescreen too), filling upward. */
+  if (a->special >= 0 && !a->title && y >= 15 && y <= 80) {
+    int fill = 79 - a->special;
+    for (int x = 0; x < 6; ++x) {
+      int dx = 2 + x;
+      if (dx < 0 || dx >= view.width) continue;
+      bool edge = x == 0 || x == 5 || y == 15 || y == 80;
+      uint16_t color = edge ? 0x0c63 : y > fill ? (x < 3 ? 0x7c1f : 0x5c13) : 0x1084;
+      objects[dx] = (uint16_t)(z | 1); object_colors[dx] = color;
+    }
+  }
 }
 static void coop_partner_row(const Ppu *ppu,const Raster *r,int y,MmxRenderView view,
                              uint16_t *objects,int *colors) {
@@ -2164,7 +2261,7 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
     const Raster *r = &frame.lines[y]; Ppu p;
     memcpy(&p, r->registers, PPU_SAVESTATE_REGS_SIZE);
     if (beam_count) p.cgwsel = (p.cgwsel & 0xcf) | 0x20;
-    if ((p.bgmode & 7) != 1 || (!stage && !menu && !zero_title && !frame_rush.menu && !options_screen)) {
+    if ((p.bgmode & 7) != 1 || (!stage && !menu && !zero_title && !frame_axl.title && !frame_axl.menu && !frame_rush.menu && !options_screen)) {
       memcpy(out + y * view.width + view.extra, frame.stock + y * 256, 256 * sizeof(*out));
       ++stats.fallback_lines; continue;
     }
@@ -2242,8 +2339,14 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       bool zero_charge = zero && stage && MmxZeroNativeChargeObject(s.object,frame.ram[s.object+10]);
       bool zero_armor = zero && (s.object == 0xc38 || s.object == 0xc58 || s.object == 0xc78 ||
           (zero_menu && (s.object == 0x1928 || s.object == 0x1948 || s.object == 0x1968)));
+      bool axl_part = (stage || frame_axl.title || frame_axl.menu) && !zero &&
+          ((frame_axl.menu && s.object >= 0x1928 && s.object <= 0x1988 && !((s.object - 0x1928) & 31)) ||
+           ((frame_axl.body.active || frame_axl.own_body) && (s.object == 0xba8 || s.object == 0xc38 ||
+            s.object == 0xc58 || s.object == 0xc78 || (frame_axl.title && menu_body))) ||
+           (s.object >= 0x1228 && s.object < 0x1428 && !((s.object - 0x1228) & 63) &&
+            (frame_axl.hidden_slots & (1u << ((s.object - 0x1228) / 64)))));
       bool oam_match = false;
-      if (g_mmx_render_asset_repairs || coop_buster || zero_body || zero_armor || zero_charge || swap_actor || red_ready || red_death || triad_x_body || triad_armor || frozen_enemy) for (int slot = 16; slot < 128; ++slot) {
+      if (g_mmx_render_asset_repairs || axl_part || coop_buster || zero_body || zero_armor || zero_charge || swap_actor || red_ready || red_death || triad_x_body || triad_armor || frozen_enemy) for (int slot = 16; slot < 128; ++slot) {
         unsigned pos = r->oam[slot * 2], hi = r->high_oam[slot / 4] >> (slot % 4 * 2);
         int ox = (pos & 255) | ((hi & 1) << 8); if (ox >= 256) ox -= 512;
         if (ox == s.x && (pos >> 8) == ((unsigned)s.y & 255) && r->oam[slot * 2 + 1] == s.attr) {
@@ -2251,6 +2354,7 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
           replaced[slot] = true; center = true;
         }
       }
+      if (axl_part) continue; /* drawn once below as Axl */
       if(frame_rush.mode==MMX_RUSH_PLAYING && !frame.expand && s.object>=0xe68 && s.object<0x1d08 &&
           frame_rush.owner[(s.object-0xe68)/32] && !oam_match) continue;
       /* Relocated bodies are drawn above from their own source art, and so
@@ -2393,6 +2497,7 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       }
       sprite(&p, r, s.x, s.y, attr, s.size, y, view, objects, !center, asset, s.tile, object_colors, true, false, red_ready || red_death);
     }
+    if ((stage || frame_axl.title || frame_axl.menu) && !zero) axl_row(y, view, objects, object_colors);
     if (stage) coop_partner_row(&p,r,y,view,objects,object_colors);
     int bar_first = -1, bar_count = 0;
     if (hud) for (int slot = 16; slot <= 48; ++slot) {
@@ -2409,6 +2514,10 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       if(coop_hud && slot<16) continue;
       if (replaced[slot]) continue;
       unsigned pos = r->oam[slot * 2], attr = r->oam[slot * 2 + 1];
+      /* Axl's title: X's cursor sprites at the left edge, also when this
+       * frame recorded no pieces for them. */
+      if (frame_axl.title && frame_axl.body.active && (pos & 255) < 72 &&
+          !(r->high_oam[slot / 4] >> (slot % 4 * 2) & 1)) continue;
       unsigned hi = r->high_oam[slot / 4] >> (slot % 4 * 2);
       int x = (pos & 255) | ((hi & 1) << 8), sy = pos >> 8;
       if (x >= 256) x -= 512;
@@ -2416,7 +2525,8 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       if (x + size <= 0 || x >= 256) continue;
       /* Only the player's HUD badge: not weapon icons, bosses or actors.
        * This remains visible while the player blinks or has no body pieces. */
-      bool zero_icon = (stage || zero_menu) && MmxZeroEnabled() && !frame_zero.active_x && slot == 0 &&
+      bool zero_icon = (stage || zero_menu) && (frame_axl.badge.pixels ||
+          (MmxZeroEnabled() && !frame_zero.active_x)) && slot == 0 &&
           x == 8 && sy == 80 && attr == 0x3486 && size == 16;
       bool anchored = stage && hud && sy < 96 && (slot < 16 || (bar_count >= 4 && slot >= bar_first && slot < bar_first + bar_count));
       bool reprojected = stage && !anchored && (view_dx || view_dy);
@@ -2505,8 +2615,11 @@ bool MmxRendererDraw(uint32_t *out, MmxRenderView view, bool hud) {
       }
       out[y * view.width + sx] = colour(&p, r->palette, brightness, screens[0], screens[1], color_window, object_colors[sx], bg_colors,
                                        dialogue_backdrop && (x < 0 || x >= 256),camouflage_bg);
+      if (stage && (frame_axl.screen_dim || frame_axl.screen.pixels))
+        axl_giga_pixel(&out[y * view.width + sx], x, y, objects[sx] && screens[0] == objects[sx]);
     }
   }
+  if (!zero) axl_life_head(out, view);
   for (unsigned i = 0; i < frame_debug_rect_count; ++i)
     draw_debug_rect(out, view, &frame_debug_rects[i]);
   if(stage) {

@@ -153,6 +153,22 @@ static void queue_native_sound(uint8_t *r,unsigned object,uint8_t command) {
   unsigned x=r[0xba3]&0x1e;
   r[0xb72+x]=command;r[0xb73+x]=(uint8_t)diff;r[0xba3]=(uint8_t)((x+2)&0x1e);
 }
+/* Every player at the end of X1's death ($0C, step 6, after the burst): the
+ * run finishes as on a death, with its Retry/Main Menu screen. */
+static void escape_run(uint8_t *r) {
+  MmxBossRushScratchState scratch=MmxBossRushScratchGetState();
+  /* $C3 bit 7: X1's pause menu is open. */
+  if(!scratch.escape || (r[0xc3]&128) || MmxWeaponsMenuVisible(r) || r[0xd3]!=4) return;
+  scratch.escape=0;MmxBossRushScratchSetState(&scratch);
+  r[0xbcf]&=0x80;r[0xbaa]=0x0c;r[0xbab]=6;
+  if(MmxCoopEnabled()) {
+    MmxCoopState c=MmxCoopGetState();
+    for(unsigned i=0;i<2;++i) {
+      c.players[i].body[0x27]&=0x80;c.players[i].body[2]=0x0c;c.players[i].body[3]=6;
+    }
+    MmxCoopSetState(&c);
+  }
+}
 static void boss_hook(CpuState *cpu,uint32_t pc) {
   MmxBossRushState s=MmxBossRushGetState();int owner=MmxBossRushOwner(cpu->D);
   unsigned at=pc&0x7fffff;
@@ -166,10 +182,16 @@ static void boss_hook(CpuState *cpu,uint32_t pc) {
     }
   }
   if(at==0x00c93c && (s.mode==MMX_RUSH_PREPARING || s.mode==MMX_RUSH_PLAYING)) {
-    /* Full weapon inventory normally enables the Escape Unit. An endless
-     * run ends only on death: use the retail unavailable cue/zero return,
-     * before the menu can set its escape flag or start the exit sequence. */
-    interp_bridge_pre_opcode_redirect((pc&0xff0000)|0xc94f);return;
+    /* The Escape Unit ends the run. Answer as on a cleared stage, so the menu
+     * plays its escape chime, closes and fades out; once it has closed,
+     * escape_run ends the run as a death would, before the native exit. */
+    MmxBossRushScratchState scratch=MmxBossRushScratchGetState();
+    scratch.escape=1;MmxBossRushScratchSetState(&scratch);
+    /* Answer "available" from the RTS ($C94E): A = $40, Z clear, so the menu
+     * plays its escape chime and closes as on a cleared stage. */
+    cpu->A=(uint16_t)((cpu->A&0xff00)|0x40);cpu->_flag_Z=0;cpu->_flag_N=0;
+    cpu->P=(uint8_t)(cpu->P&~0x82u);
+    interp_bridge_pre_opcode_redirect((pc&0xff0000)|0xc94e);return;
   }
   if(at==0x00d1ed && s.mode==MMX_RUSH_PREPARING) {
     /* Run the native music call inside the guest scheduler, so a multi-frame
@@ -879,7 +901,12 @@ void MmxBossRushFrame(uint8_t *r,uint16_t input) {
         r[0xbaa]!=14 && !r[0xc0c] && !r[0xc16]) prepare(r);
     return;
   }
-  if(s.mode==MMX_RUSH_PREPARING) {camera(r);return;}
+  if(s.mode==MMX_RUSH_PREPARING || s.mode==MMX_RUSH_PLAYING) escape_run(r);
+  if(s.mode==MMX_RUSH_PREPARING) {
+    /* The Escape Unit can end the run before the encounter begins. */
+    if(!(r[0xbcf]&127) && r[0xbaa]==12 && r[0xbab]>=6) {MmxBossRushFinish();return;}
+    camera(r);return;
+  }
   camera(r);
   if(r[0xd3]==4 && !r[0x1f19] && !MmxWeaponsMenuVisible(r) && !MmxCoopGetState().menu_owner) {
     for(unsigned i=0;i<2;++i) {

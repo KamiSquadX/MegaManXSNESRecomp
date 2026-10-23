@@ -361,9 +361,9 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
   size_t rush_bytes=sizeof(MmxBossRushState),audio_bytes=sizeof(MmxBossRushAudioState),
       visual_bytes=sizeof(MmxBossRushVisualState),bounds_bytes=sizeof(MmxCoopViewBoundsState),
       roster_bytes=sizeof(MmxBossRushRosterState),scratch_bytes=sizeof(MmxBossRushScratchState),
-      options_bytes=sizeof(MmxOptionsState);
+      options_bytes=sizeof(MmxOptionsState),axl_bytes=sizeof(MmxAxlState);
   size_t v21_bytes=MMX_ZERO_EXTENSION_STATE_BYTES+rush_bytes+audio_bytes+visual_bytes;
-  size_t tail=n-v21_bytes-bounds_bytes-roster_bytes-scratch_bytes-options_bytes;
+  size_t tail=n-v21_bytes-bounds_bytes-roster_bytes-scratch_bytes-options_bytes-axl_bytes;
   size_t chunk=0;
   for(size_t i=n-8;i>8;--i) {
     uint32_t magic;memcpy(&magic,start+i,4);
@@ -371,12 +371,13 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
   }
   check(chunk && tail>chunk,"bounded game state tail located");
   uint32_t version;memcpy(&version,start+chunk+4,4);
-  check(version==25,"combined state uses v25 with the Boss Rush state and OPTION MODE's dash options");
+  check(version==26,"combined state uses v26 with the Boss Rush state, OPTION MODE's dash options and Axl");
   MmxBossRushState original=MmxBossRushGetState();
   /* 0: main v18 (extension only); 1-3: Rush previews v18/v19/v20;
    * 4: v21 extension + Rush; 5: v22 adds per-seat view bounds; 6: v23 adds
-   * the roster; 7: v24 adds the relocated bosses' scratch RAM. */
-  for(unsigned format=0;format<8;++format) {
+   * the roster; 7: v24 adds the relocated bosses' scratch RAM; 8: v25 adds
+   * OPTION MODE's dash options. */
+  for(unsigned format=0;format<9;++format) {
     memcpy(legacy,start,n);size_t length=n;
     version=format?format+17:18;
     if(!format) length=tail+MMX_ZERO_EXTENSION_STATE_BYTES; /* main v18 */
@@ -385,7 +386,7 @@ static void rush_state_format_checks(uint8_t *start,uint8_t *legacy,uint8_t *act
       memmove(legacy+tail,start+tail+MMX_ZERO_EXTENSION_STATE_BYTES,bytes);
       length=tail+bytes; /* original Rush v18/v19/v20 */
     } else length=tail+v21_bytes+(format>=5?bounds_bytes:0)+(format>=6?roster_bytes:0)+
-        (format>=7?scratch_bytes:0);
+        (format>=7?scratch_bytes:0)+(format>=8?options_bytes:0);
     memcpy(legacy+chunk+4,&version,4);rush_extension_value=99;
     check(RtlLoadSnapshotFromMemory(legacy,length),"main/preview/current memory state imports");
     check(rush_extension_value==(format==0 || format>=4?7:0),
@@ -1310,6 +1311,15 @@ static void rush_combo_sound_checks(void) {
     for(unsigned i=0;i<2;++i) if(s.bosses[i].id==boss && s.bosses[i].phase==MMX_RUSH_FIGHTING) seat=i;
   }
   check(seat<2,"combo sound fixture reaches combat");
+  /* MMX_COMBO_SWAP (with Add Axl): CHANGE PLAYER away from Zero and back
+   * first. Saber Zero's ground window ($86:FFD8) must still install. */
+  if(getenv("MMX_COMBO_SWAP")) {
+    for(unsigned t=0;t<200 && MmxZeroActive();++t) {frame(t%40==0?SNES_PAD_SELECT:0);rush_keep_players_alive();}
+    for(unsigned t=0;t<90;++t) {frame(SNES_PAD_Y);rush_keep_players_alive();}
+    for(unsigned t=0;t<200 && !MmxZeroActive();++t) {frame(t%40==0?SNES_PAD_SELECT:0);rush_keep_players_alive();}
+    for(unsigned t=0;t<30;++t) {frame(0);rush_keep_players_alive();}
+    fprintf(stderr,"combo: swapped back to Zero=%u\n",MmxZeroActive());
+  }
   unsigned body=s.bosses[seat].object,hits=0,silent=0,hp=g_ram[body+0x27]&127;
   for(unsigned t=0;t<240;++t) {
     s=MmxBossRushGetState();unsigned other=s.bosses[seat^1].object;

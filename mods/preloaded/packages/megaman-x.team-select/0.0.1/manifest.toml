@@ -1,0 +1,72 @@
+format_version = 1
+id = "megaman-x.team-select"
+version = "0.0.1"
+name = "Solo Team select"
+author = "KamiSquad_X"
+description = "Choose who starts a solo game and who CHANGE PLAYER brings in."
+license = "PolyForm-Noncommercial-1.0.0"
+resolver = "declarative"
+save_compatibility = "requires-same-mods"
+
+[[target]]
+game_id = "megaman-x-us"
+rom_sha256 = "b8f70a6e7fb93819f79693578887e2c11e196bdf1ac6ddc7cb924b1ad0be2d32"
+
+[[feature]]
+id = "team"
+name = "Solo Team select"
+description = "Your team for a solo game: the starting character, who appears on the title and menus, and the partner CHANGE PLAYER (Select) switches to, or None to play only the starting character. It is on whenever Add Zero or Add Axl is, and offers only the characters that are added."
+group = "Characters"
+order = 3
+default_enabled = false
+# On exactly while Add Zero or Add Axl is: it has no switch of its own.
+follows_any = "megaman-x.character.zero:zero megaman-x.character.axl:axl"
+
+[[option]]
+feature = "team"
+id = "start"
+label = "Starting character"
+description = "Who starts the game and appears on the title and menus."
+type = "choice"
+default = "x"
+distinct_from = "partner"
+[[option.choice]]
+value = "x"
+label = "X"
+[[option.choice]]
+value = "zero"
+label = "Zero"
+requires = "megaman-x.character.zero:zero"
+[[option.choice]]
+value = "axl"
+label = "Axl"
+requires = "megaman-x.character.axl:axl"
+
+[[option]]
+feature = "team"
+id = "partner"
+label = "Partner character"
+description = "Who CHANGE PLAYER (Select) switches to. None plays only the starting character."
+type = "choice"
+default = "zero"
+distinct_from = "start"
+[[option.choice]]
+value = "none"
+label = "None"
+[[option.choice]]
+value = "x"
+label = "X"
+[[option.choice]]
+value = "zero"
+label = "Zero"
+requires = "megaman-x.character.zero:zero"
+[[option.choice]]
+value = "axl"
+label = "Axl"
+requires = "megaman-x.character.axl:axl"
+
+[[plugin]]
+feature = "team"
+id = "megaman-x.team"
+
+# The co-op modes claim this plugin too: they pick their own characters.

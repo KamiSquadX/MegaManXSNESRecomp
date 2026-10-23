@@ -48,6 +48,41 @@ typedef bool (*MmxRendererPlayerOverlayProvider)(
 
 void MmxRendererSetPlayerOverlayProvider(
     MmxRendererPlayerOverlayProvider provider);
+/* Add Axl. `body`, when active, replaces X's body and armor pieces: on a
+ * stage at X's world position, on the title at (`screen_x`, `screen_y`).
+ * Hidden projectile slots ($1228 + 64n, bit n) are drawn by Axl as
+ * `sprites` instead (world positions, or screen positions on the title).
+ * `special` 0..64 draws his armor ability bar; -1 hides it. `own_body`
+ * hides X's body and armor pieces also on frames Axl leaves blank (a blink).
+ * `teleport`, when set, replaces X's art in CHANGE PLAYER's beam. `badge`
+ * replaces the health bar's X badge (16x16, column 1 on); in the pause menu
+ * (`menu`), `portrait` replaces X's body and armor at the menu's $1988 and
+ * `life` covers X's life head (BG tiles at 196,142). */
+enum { MMX_RENDER_AXL_SPRITES = 12 };
+typedef struct MmxRenderAxlSprite {
+  MmxRenderPlayerOverlayPlane plane;
+  int32_t x, y;
+  bool facing_left;
+} MmxRenderAxlSprite;
+typedef struct MmxRenderAxlFrame {
+  MmxRenderPlayerOverlay body;
+  bool title;
+  int32_t screen_x, screen_y;
+  uint8_t hidden_slots;
+  unsigned sprite_count;
+  MmxRenderAxlSprite sprites[MMX_RENDER_AXL_SPRITES];
+  int special;
+  /* GigaCrash: the scene behind sprites darkens by screen_dim/8, and
+   * `screen` (canvas origin centred on the 4:3 view) blends in at 50%. */
+  uint8_t screen_dim;
+  MmxRenderPlayerOverlayPlane screen;
+  bool own_body;
+  MmxRenderPlayerOverlayPlane teleport;
+  bool menu;
+  MmxRenderPlayerOverlayPlane badge, life, portrait;
+} MmxRenderAxlFrame;
+typedef bool (*MmxRendererAxlProvider)(const uint8_t *ram, MmxRenderAxlFrame *out);
+void MmxRendererSetAxlProvider(MmxRendererAxlProvider provider);
 MmxRenderPlayerOverlay MmxRendererPlayerOverlaySnapshot(void);
 
 /* A presentation-only world sprite. The renderer owns camera projection,

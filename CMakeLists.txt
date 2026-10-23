@@ -235,6 +235,29 @@ if(TARGET mmx_state_tests)
                 $<TARGET_FILE:mmx_state_tests> "${CMAKE_CURRENT_SOURCE_DIR}/mmx.sfc")
         set_tests_properties(mmx_boss_rush_reports PROPERTIES
             WORKING_DIRECTORY "${rush_report_dir}" LABELS "rom;boss-rush")
+        set(axl_test_dir "${CMAKE_CURRENT_BINARY_DIR}/axl-test")
+        file(MAKE_DIRECTORY "${axl_test_dir}")
+        add_test(NAME mmx_axl
+            COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy MMX_REPLAY_RECORD=0
+                MMX_AXL_TEST=1 $<TARGET_FILE:mmx_state_tests> "${CMAKE_CURRENT_SOURCE_DIR}/mmx.sfc")
+        set_tests_properties(mmx_axl PROPERTIES
+            WORKING_DIRECTORY "${axl_test_dir}" LABELS "rom;axl")
+        add_test(NAME mmx_axl_escape
+            COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy MMX_REPLAY_RECORD=0
+                MMX_AXL_TEST=1 MMX_AXL_ESCAPE_TEST=1 $<TARGET_FILE:mmx_state_tests> "${CMAKE_CURRENT_SOURCE_DIR}/mmx.sfc")
+        set_tests_properties(mmx_axl_escape PROPERTIES
+            WORKING_DIRECTORY "${axl_test_dir}" LABELS "rom;axl;boss-rush")
+        add_test(NAME mmx_axl_highway
+            COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy MMX_REPLAY_RECORD=0
+                MMX_AXL_TEST=1 MMX_AXL_HIGHWAY=1 $<TARGET_FILE:mmx_state_tests> "${CMAKE_CURRENT_SOURCE_DIR}/mmx.sfc")
+        set_tests_properties(mmx_axl_highway PROPERTIES
+            WORKING_DIRECTORY "${axl_test_dir}" LABELS "rom;axl")
+        add_test(NAME mmx_axl_launcher
+            COMMAND ${CMAKE_COMMAND} -E env SDL_AUDIODRIVER=dummy MMX_REPLAY_RECORD=0 MMX_AXL_TEST=1
+                "MMX_AXL_LAUNCHER_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/mods/preloaded"
+                $<TARGET_FILE:mmx_state_tests> "${CMAKE_CURRENT_SOURCE_DIR}/mmx.sfc")
+        set_tests_properties(mmx_axl_launcher PROPERTIES
+            WORKING_DIRECTORY "${axl_test_dir}" LABELS "rom;axl")
         foreach(carpet_case native widescreen ultrawide no_shot)
             set(carpet_env)
             if(carpet_case STREQUAL "widescreen")
@@ -259,3 +282,4 @@ if(TARGET mmx_state_tests)
     endif()
 endif()
 include(cmake/saber.cmake)
+include(cmake/axl.cmake)

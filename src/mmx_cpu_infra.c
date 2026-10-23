@@ -30,5 +30,5 @@ const RtlGameInfo kMmxGameInfo = {
   .on_state_loaded = &MmxOnStateLoaded,
   .hardware_reset = &MmxOnHardwareReset,
   .frame_begin = &MmxOptionsFrameBegin,
-  .frame_end = &MmxReplayEnd,
+  .frame_end = &MmxOptionsFrameEnd,
 };

@@ -484,3 +484,10 @@ distinguishes these layouts by their bounded tail lengths. The ROM-backed
 v19/v20, combined v21, file/memory imports and byte-exact immediate restoration.
 This format compatibility does not establish multiplayer compatibility between
 builds; the existing build identity checks remain in place.
+
+## Ending a run from the pause menu
+
+**ESCAPE.U** in the pause menu (Start on it, as in X1) ends the run. It
+behaves as on a cleared stage: the escape chime plays, the menu closes and
+the screen fades. Then the run ends with the same result screen as a death,
+with **Retry** and **Main Menu**, instead of leaving for stage select.

@@ -223,10 +223,15 @@ static int prepare(const char *package, const char *feature, unsigned game, int 
 static void activate(void) {
   /* Co-op claims this existing plugin as its character-mode exclusion key.
    * Its dedicated activation below owns preparation in that mode. */
-  if(snes_mod_runtime_feature_enabled_c("megaman-x.coop","coop")) return;
-  char path[4096],start[16]={0},behavior[16]={0};
+  if(snes_mod_runtime_feature_enabled_c("megaman-x.coop","coop") ||
+     snes_mod_runtime_feature_enabled_c("megaman-x.coop-axl","coop")) return;
+  char path[4096],behavior[16]={0};
   if (!prepare("megaman-x.character.zero","zero",3,1,path)) return;
-  snes_mod_runtime_feature_option_value_c("megaman-x.character.zero","zero","start",start,sizeof(start));
+  /* X starts unless Solo Team select starts Zero (it follows Add Zero, so
+   * a team naming Zero is always one Zero can start). */
+  char start[16] = {0};
+  if (snes_mod_runtime_feature_enabled_c("megaman-x.team-select","team"))
+    snes_mod_runtime_feature_option_value_c("megaman-x.team-select","team","start",start,sizeof(start));
   MmxZeroSetStartCharacter(strcmp(start,"zero") != 0);
   snes_mod_runtime_feature_option_value_c("megaman-x.character.zero","zero","behavior",behavior,sizeof(behavior));
   MmxZeroSetModern(!strcmp(behavior,"modern"));
@@ -240,16 +245,25 @@ static void activate(void) {
 #endif
   fprintf(stderr, "[mmx-zero] Zero 0.0.1 enabled; starting as %s\n", strcmp(start,"zero") ? "X" : "Zero");
 }
-static void activate_coop(void) {
-  char path[4096],character[32]={0},behavior[16]={0},cameras[32]={0},hud[32]={0};
-  if(!prepare("megaman-x.coop","coop",3,1,path) || !MmxZeroLoad(path)) return;
-  snes_mod_runtime_feature_option_value_c("megaman-x.coop","coop","player1",character,sizeof(character));
-  snes_mod_runtime_feature_option_value_c("megaman-x.coop","coop","behavior",behavior,sizeof(behavior));
+static void start_coop(const char *package) {
+  char path[4096],character[32]={0},partner[32]={0},behavior[16]={0},cameras[32]={0},hud[32]={0};
+  if(!prepare(package,"coop",3,1,path) || !MmxZeroLoad(path)) return;
+  snes_mod_runtime_feature_option_value_c(package,"coop","player1",character,sizeof(character));
+  snes_mod_runtime_feature_option_value_c(package,"coop","player2",partner,sizeof(partner));
+  snes_mod_runtime_feature_option_value_c(package,"coop","behavior",behavior,sizeof(behavior));
   MmxZeroSetModern(!strcmp(behavior,"modern"));
-  snes_mod_runtime_feature_option_value_c("megaman-x.coop","coop","cameras",cameras,sizeof(cameras));
+  snes_mod_runtime_feature_option_value_c(package,"coop","cameras",cameras,sizeof(cameras));
   MmxCoopViewsSetIndependent(!strcmp(cameras,"independent"));
-  snes_mod_runtime_feature_option_value_c("megaman-x.coop","coop","hud",hud,sizeof(hud));
+  snes_mod_runtime_feature_option_value_c(package,"coop","hud",hud,sizeof(hud));
   MmxRendererSetCompactCoopHud(strcmp(hud,"horizontal")!=0);
+  /* Co-op seats are X and Zero. Axl takes a seat in the next co-op
+   * integration step; until then that seat plays its X or Zero. */
+  if(!strcmp(character,"axl") || !strcmp(partner,"axl") ||
+     (partner[0] && !strcmp(character,partner))) {
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,"Co-op",
+        "Axl in co-op is not playable yet in this test build. Starting as X and Zero.",NULL);
+    strcpy(character,"x");
+  }
   unsigned p1=!strcmp(character,"zero") ? MMX_COOP_ZERO : MMX_COOP_X;
   MmxZeroRegisterHooks();MmxCoopRegisterHooks();
   if(!MmxCoopEnable(p1)) {
@@ -257,9 +271,19 @@ static void activate_coop(void) {
     return;
   }
 #if !MMX_VARIANT_JP
-  if(!strcmp(behavior,"saber")) MmxSaberActivate("megaman-x.coop","coop",true);
+  if(!strcmp(behavior,"saber")) MmxSaberActivate(package,"coop",true);
 #endif
   fprintf(stderr,"[mmx-coop] Co-op enabled; P1 is %s\n",p1==MMX_COOP_X?"X":"Zero");
+}
+/* Add Axl and Solo Team select claim the co-op plugins too, only so the
+ * launcher keeps them apart; a co-op plugin starts only for its own feature. */
+static void activate_coop(void) {
+  if(!snes_mod_runtime_feature_enabled_c("megaman-x.coop","coop")) return;
+  start_coop("megaman-x.coop");
+}
+static void activate_coop_axl(void) {
+  if(!snes_mod_runtime_feature_enabled_c("megaman-x.coop-axl","coop")) return;
+  start_coop("megaman-x.coop-axl");
 }
 static void activate_weapons(unsigned game) {
   char path[4096];
@@ -287,6 +311,7 @@ SNES_MOD_CONSTRUCTOR(mmx_register_zero_plugin) {
   (void)snes_mod_register_reset_callback(reset);
   (void)snes_mod_register_activation_plugin("megaman-x.zero", activate);
   (void)snes_mod_register_activation_plugin("megaman-x.coop",activate_coop);
+  (void)snes_mod_register_activation_plugin("megaman-x.coop-axl",activate_coop_axl);
   (void)snes_mod_register_activation_plugin("megaman-x.weapons.x2",activate_x2);
   (void)snes_mod_register_activation_plugin("megaman-x.weapons.x3",activate_x3);
 }

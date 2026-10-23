@@ -100,6 +100,20 @@ bool MmxZeroSlideHold(uint8_t ram[0x20000], unsigned pc);
 /* Before the player state dispatch: re-enter the dash if Zero cannot stand. */
 void MmxZeroSlideTick(uint8_t ram[0x20000]);
 unsigned MmxZeroUpgradeBits(unsigned pc, unsigned original);
+/* Another character on X's body (Add Axl). The compiled player and combat
+ * code already calls these Zero entry points; the hooks run when Zero is not
+ * the live character (upgrade, pre_player, motion) or for every projectile
+ * (damage, hitbox, response, which must pass other projectiles through).
+ * NULL removes them. */
+typedef struct MmxZeroBodyHooks {
+  unsigned (*upgrade)(unsigned pc, unsigned original);
+  void (*pre_player)(uint8_t *ram);                  /* $81:815C */
+  void (*motion)(uint8_t *ram, unsigned object);     /* $82:823E */
+  unsigned (*damage)(uint8_t *ram, unsigned enemy, unsigned projectile, unsigned value);
+  unsigned (*hitbox)(const uint8_t *ram, unsigned enemy, unsigned projectile, unsigned value);
+  unsigned (*response)(uint8_t *ram, unsigned enemy, unsigned projectile, unsigned value);
+} MmxZeroBodyHooks;
+void MmxZeroSetBodyHooks(const MmxZeroBodyHooks *hooks);
 void MmxZeroPlayerTick(uint8_t ram[0x20000]);
 void MmxZeroPlayerEnd(uint8_t ram[0x20000]);
 unsigned MmxZeroChargeTier(const MmxZeroState *snapshot);

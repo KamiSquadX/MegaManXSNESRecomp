@@ -1,4 +1,5 @@
 #include "mmx_options.h"
+#include "mmx_axl.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -117,7 +118,13 @@ bool MmxOptionsFrameBegin(uint32_t *inputs) {
   uint16_t p1 = tap_seat(0, (uint16_t)(w & 0x0fff), active);
   uint16_t p2 = tap_seat(1, (uint16_t)((w >> 12) & 0x0fff), active);
   *inputs = (w & ~0x00ffffffu) | p1 | ((uint32_t)p2 << 12);
+  /* Axl reads the dash a double tap produced: Down + that dash rolls. */
+  MmxAxlFrameBegin(inputs);
   return run;
+}
+void MmxOptionsFrameEnd(void) {
+  MmxAxlFrameEnd();
+  MmxReplayEnd();
 }
 /* $81:8767: the wall kick takes dash speed when the dash window ($0BFE,
  * opened for ten frames by a dash press in the air) is still open. Held

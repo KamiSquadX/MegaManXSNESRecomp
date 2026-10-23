@@ -99,3 +99,13 @@ id = "megaman-x.coop"
 [[plugin]]
 feature = "coop"
 id = "megaman-x.zero"
+
+# Add Axl and Solo Team select own the solo characters: features sharing a
+# plugin are alternatives, so co-op and they deselect each other.
+[[plugin]]
+feature = "coop"
+id = "megaman-x.axl"
+
+[[plugin]]
+feature = "coop"
+id = "megaman-x.team"

@@ -280,12 +280,14 @@ static void rush_rhino_launcher(void) {
     const char *behavior=!strcmp(who,"modern")?"modern":!strcmp(who,"saber")?"saber":"x3";
     const char *package="megaman-x.character.zero";
     check(p->feature_enable(p->ctx,package,"zero",1) &&
-        p->feature_set_option(p->ctx,package,"zero","start","zero") &&
         p->feature_set_option(p->ctx,package,"zero","behavior",behavior),
-        "launcher selects Add Zero, starting as Zero with the chosen behavior");
+        "launcher selects Add Zero with the chosen behavior");
     check(p->feature_enable(p->ctx,MMX_SABER_SETTINGS_PACKAGE,MMX_SABER_SETTINGS_FEATURE,
         !strcmp(who,"saber")),"Saber Zero settings follow the behavior");
   }
+  /* MMX_BOSS_RUSH_WITH_AXL: Add Axl too (Solo Team select follows). */
+  if(getenv("MMX_BOSS_RUSH_WITH_AXL"))
+    check(p->feature_enable(p->ctx,"megaman-x.character.axl","axl",1),"launcher adds Axl");
   bool committed=p->commit(p->ctx,x1);
   if(!committed) {
     fprintf(stderr,"rhino launcher commit: %s\n",p->last_error?p->last_error(p->ctx):snes_mod_runtime_last_error_c());
@@ -306,6 +308,8 @@ static void rush_rhino_launcher(void) {
       "the shared X3 ROM reaches X3 Mavericks and X3 weapons");
   if(x2) check(MmxBossRushForeignReady(2) && MmxWeaponsPageEnabled(1),
       "the shared X2 ROM reaches X2 Mavericks and X2 weapons");
+  /* Add Zero always starts as X; the matrix plays the run as Zero. */
+  if(zero) {MmxZeroState z=MmxZeroGetState();z.active_x=0;MmxZeroSetState(z);}
   if(zero) check(MmxZeroEnabled() && MmxZeroActive(),"the run starts as Zero");
   if(!strcmp(who,"modern")) check(MmxZeroModern(),"Modern Zero is active");
   if(!strcmp(who,"saber")) check(MmxSaberEnabled(),"Saber Zero is active");

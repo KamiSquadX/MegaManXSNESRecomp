@@ -5,6 +5,7 @@
 #include "mmx_coop_trace.h"
 #include "mmx_renderer.h"
 #include "mmx_zero.h"
+#include "mmx_axl.h"
 #include "mmx_weapons.h"
 #if !MMX_VARIANT_JP
 #include "saber/mmx_saber_plugin.h"
@@ -340,6 +341,7 @@ static uint32_t playback_begin(uint32_t inputs) {
        * Do not execute any captured input unless the fingerprint matches. */
       MmxZeroSetCollisionRom(g_snes->cart->rom,g_snes->cart->romSize);
       MmxWeaponsCollisionRom(g_snes->cart->rom,g_snes->cart->romSize);
+      MmxAxlCollisionRom(g_snes->cart->rom,g_snes->cart->romSize);
       uint32_t restored_rom=hash(g_snes->cart->rom,g_snes->cart->romSize);
       if(playback_rom!=restored_rom && !legacy_wave_rom_matches(playback_rom)) {
         fprintf(stderr,"[mmx-replay] legacy ROM fingerprint recorded=%08x restored=%08x source=%08x\n",

@@ -21,20 +21,6 @@ default_enabled = false
 
 [[option]]
 feature = "zero"
-id = "start"
-label = "Starting character"
-description = "Who starts the game and appears on the title and menus. Select still switches characters."
-type = "choice"
-default = "x"
-[[option.choice]]
-value = "x"
-label = "X"
-[[option.choice]]
-value = "zero"
-label = "Zero"
-
-[[option]]
-feature = "zero"
 id = "behavior"
 label = "Zero behavior"
 description = "Shared with X / Zero Co-op. Modern replaces Zero's buster with a direct saber and adds a double jump and air dash. Saber Zero (by RaphaelAzev) adds a Y-button Z-Saber with a 3-hit ground combo, air, wall and dash slashes, and the X3 finisher wave; tune it with Saber Zero settings. Special weapons remain available."

@@ -54,7 +54,9 @@ void MmxBossRushVisualFade(unsigned owner, uint32_t generation,
  * bytes while a seat's copy is swapped in (`active` = seat + 1). */
 typedef struct MmxBossRushScratchState {
   uint8_t seat[2][16], world[16];
-  uint8_t active, reserved[3];
+  /* escape: ESCAPE.U was chosen; the run ends once the menu has closed.
+   * It was reserved (zero) before, so older states read as no escape. */
+  uint8_t active, escape, reserved[2];
 } MmxBossRushScratchState;
 MmxBossRushScratchState MmxBossRushScratchGetState(void);
 bool MmxBossRushScratchValidState(const MmxBossRushScratchState *state);

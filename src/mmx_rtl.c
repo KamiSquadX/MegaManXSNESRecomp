@@ -11,6 +11,7 @@
 #include "mmx_replay.h"
 #include "mmx_coop_view.h"
 #include "mmx_boss_rush.h"
+#include "mmx_axl.h"
 #include "mmx_options.h"
 #include "mmx_boss_rush_audio.h"
 #include "variables.h"
@@ -369,7 +370,7 @@ void mmx_host_yield(uint8_t countdown) {
 #include "snes/saveload.h"
 
 #define MMX_SAV_CHUNK_MAGIC   0x4D4D5854u  /* "MMXT" */
-#define MMX_SAV_CHUNK_VERSION 25u /* OPTION MODE dash options */
+#define MMX_SAV_CHUNK_VERSION 26u /* Add Axl */
 
 typedef struct MmxSavChunk {
   uint32_t magic, version;
@@ -414,6 +415,8 @@ static MmxBossRushRosterState g_load_rush_roster;
 static MmxBossRushScratchState g_load_rush_scratch;
 static MmxOptionsState g_load_options;
 static bool g_load_options_ok;
+static MmxAxlState g_load_axl;
+static bool g_load_axl_ok;
 
 void MmxStateSaveExtra(struct SaveLoadInfo *sli) {
   MmxSavChunk c;
@@ -478,6 +481,8 @@ void MmxStateSaveExtra(struct SaveLoadInfo *sli) {
   sli->func(sli,&scratch,sizeof(scratch));
   MmxOptionsState options=MmxOptionsGetState();
   sli->func(sli,&options,sizeof(options));
+  MmxAxlState axl=MmxAxlGetState();
+  sli->func(sli,&axl,sizeof(axl));
 }
 
 void MmxStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
@@ -583,7 +588,8 @@ void MmxStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
         (g_load_chunk.version>=22?sizeof(g_load_view_bounds):0)+
         (g_load_chunk.version>=23?sizeof(g_load_rush_roster):0)+
         (g_load_chunk.version>=24?sizeof(g_load_rush_scratch):0)+
-        (g_load_chunk.version>=25?sizeof(g_load_options):0);
+        (g_load_chunk.version>=25?sizeof(g_load_options):0)+
+        (g_load_chunk.version>=26?sizeof(g_load_axl):0);
     if(remaining!=expected) g_load_chunk_ok=0;
     if(g_load_chunk_ok && extension)
       sli->func(sli,g_load_zero_extension,sizeof(g_load_zero_extension));
@@ -623,6 +629,13 @@ void MmxStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
       if(!MmxOptionsValidState(&g_load_options)) g_load_chunk_ok=0;
       else g_load_options_ok=true;
     }
+    /* v26 adds Axl. Older states have no Axl and keep the reset state. */
+    g_load_axl_ok=false;
+    if(g_load_chunk_ok && g_load_chunk.version>=26) {
+      sli->func(sli,&g_load_axl,sizeof(g_load_axl));
+      if(!MmxAxlValidState(&g_load_axl)) g_load_chunk_ok=0;
+      else g_load_axl_ok=true;
+    }
     if(g_load_chunk_ok && rush && !MmxBossRushRosterMatches(&g_load_rush,&g_load_rush_roster))
       g_load_chunk_ok=0;
   }
@@ -642,6 +655,8 @@ void MmxOnStateLoaded(uint32_t version) {
     MmxBossRushSetState(&g_load_rush);MmxBossRushRosterSetState(&g_load_rush_roster);
     MmxBossRushScratchSetState(&g_load_rush_scratch);
     if(g_load_options_ok) MmxOptionsSetState(&g_load_options);
+    if(g_load_axl_ok) MmxAxlSetState(&g_load_axl);
+    else MmxAxlResetState();
   } else MmxBossRushReset();
   MmxBossRushVisualState empty_visual={0};
   MmxBossRushVisualSetState(g_load_chunk_ok && g_load_complete?&g_load_rush_visual:&empty_visual);

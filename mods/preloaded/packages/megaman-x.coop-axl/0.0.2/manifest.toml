@@ -1,0 +1,139 @@
+format_version = 1
+id = "megaman-x.coop-axl"
+version = "0.0.2"
+name = "X / Zero / Axl Co-op"
+author = "mstan; Axl integration by KamiSquad_X"
+description = "Play together as X, Zero or Axl with separate health and weapons. Axl is from Mega Man X8 16-bit by Alysson da Paz (Zashiko / TagTeam mod)."
+license = "PolyForm-Noncommercial-1.0.0"
+resolver = "declarative"
+save_compatibility = "requires-same-mods"
+
+[[target]]
+game_id = "megaman-x-us"
+rom_sha256 = "b8f70a6e7fb93819f79693578887e2c11e196bdf1ac6ddc7cb924b1ad0be2d32"
+
+[[feature]]
+id = "coop"
+name = "Co-op"
+description = "Player 2 joins automatically. Hold P2 Select for 1.5 seconds to leave; press Select to rejoin. Start opens each player's weapon menu. Selecting co-op turns off Add Zero, Add Axl and Solo Team select."
+group = "Characters"
+order = 2
+default_enabled = false
+
+[[option]]
+feature = "coop"
+id = "player1"
+label = "Player 1 character"
+description = "Each player is a different character."
+type = "choice"
+default = "x"
+distinct_from = "player2"
+[[option.choice]]
+value = "x"
+label = "X"
+[[option.choice]]
+value = "zero"
+label = "Zero"
+[[option.choice]]
+value = "axl"
+label = "Axl"
+
+[[option]]
+feature = "coop"
+id = "player2"
+label = "Player 2 character"
+description = "Each player is a different character."
+type = "choice"
+default = "zero"
+distinct_from = "player1"
+[[option.choice]]
+value = "x"
+label = "X"
+[[option.choice]]
+value = "zero"
+label = "Zero"
+[[option.choice]]
+value = "axl"
+label = "Axl"
+
+[[option]]
+feature = "coop"
+id = "behavior"
+label = "Zero behavior"
+description = "Shared with Add Zero. Modern replaces Zero's buster with a direct saber and adds a double jump and air dash. Saber Zero (by RaphaelAzev) adds a Y-button Z-Saber with a 3-hit ground combo, air, wall and dash slashes, and the X3 finisher wave; tune it with Saber Zero settings. Special weapons remain available."
+type = "choice"
+default = "x3"
+[[option.choice]]
+value = "x3"
+label = "X3 Behavior"
+[[option.choice]]
+value = "modern"
+label = "Modern"
+[[option.choice]]
+value = "saber"
+label = "Saber Zero"
+
+[[option]]
+feature = "coop"
+id = "cameras"
+label = "Netplay cameras"
+description = "Unified keeps both players on one shared screen. Independent is experimental and may show graphics glitches or camera shaking. The host chooses for both peers; offline play always uses Unified."
+type = "choice"
+default = "unified"
+[[option.choice]]
+value = "unified"
+label = "Unified"
+[[option.choice]]
+value = "independent"
+label = "Independent (Experimental)"
+
+[[option]]
+feature = "coop"
+id = "hud"
+label = "HUD layout"
+description = "Compact stacks Player 1 above Player 2 in two aligned columns. Horizontal places all meters side by side."
+type = "choice"
+default = "compact"
+[[option.choice]]
+value = "compact"
+label = "Compact"
+[[option.choice]]
+value = "horizontal"
+label = "Horizontal"
+
+[[resource]]
+feature = "coop"
+id = "x3-rom"
+label = "Mega Man X3 ROM"
+description = "Select your original Mega Man X3 USA ROM."
+format = "file"
+file_patterns = "*.sfc,*.smc"
+file_description = "Mega Man X3 USA ROM"
+shared_key = "megaman-x.source.x3"
+normalized_sha256 = "65b03268afac296330e8ff8d60dd0825879e13ed658b37713c034a3bd074f1d7"
+required = true
+
+[[plugin]]
+feature = "coop"
+id = "megaman-x.coop-axl"
+
+# Claim the character plugins too: features sharing a plugin are
+# alternatives, so this co-op deselects Add Zero, Add Axl, Solo Team select
+# and the 0.0.1 co-op, and they deselect it.
+[[plugin]]
+feature = "coop"
+id = "megaman-x.zero"
+
+[[plugin]]
+feature = "coop"
+id = "megaman-x.coop"
+
+# Add Axl and Solo Team select own the solo characters: features sharing a
+# plugin are alternatives, so co-op and they deselect each other.
+[[plugin]]
+feature = "coop"
+id = "megaman-x.axl"
+
+[[plugin]]
+feature = "coop"
+id = "megaman-x.team"

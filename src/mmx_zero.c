@@ -461,8 +461,11 @@ void MmxZeroSlideTick(uint8_t r[0x20000]) {
   if (!slide_blocked(r) || r[0xbaa] != 0 || word(r + 0xbc8) != 0xa552) return;
   r[0xbaa] = 0x14; r[0xbab] = 0;
 }
+static const MmxZeroBodyHooks *body_hooks;
+void MmxZeroSetBodyHooks(const MmxZeroBodyHooks *hooks) { body_hooks = hooks; }
 unsigned MmxZeroUpgradeBits(unsigned pc, unsigned original) {
-  if (!MmxZeroActive()) return original;
+  if (!MmxZeroActive())
+    return body_hooks && body_hooks->upgrade ? body_hooks->upgrade(pc, original) : original;
   switch (pc & 0x7fffff) {
     case 0x01971c: case 0x019793: case 0x0198fc: return original | 8;
     default: return original;
@@ -661,6 +664,7 @@ static void end_air_dash(uint8_t *r) {
   if (r[0xbaa] == 0x14) { r[0xbaa] = 8; r[0xbab] = 0; }
 }
 void MmxZeroMovementTick(uint8_t r[0x20000]) {
+  if (body_hooks && body_hooks->pre_player && !MmxZeroActive()) body_hooks->pre_player(r);
   if (!MmxZeroModern() || !r) return;
   if (!movement_playable(r)) { end_air_dash(r); return; }
   bool grounded = (r[0xbd3] & 4) != 0;
@@ -705,6 +709,7 @@ void MmxZeroMovementTick(uint8_t r[0x20000]) {
   }
 }
 void MmxZeroPlayerMotion(uint8_t r[0x20000], unsigned object) {
+  if (body_hooks && body_hooks->motion && !MmxZeroActive()) body_hooks->motion(r, object);
   if (!MmxZeroModern() || !r || object != 0xba8 || !state.modern.dash_ticks) return;
   putword(r + 0xc04, 0x0375);
   putword(r + 0xbc2, state.modern.dash_facing ? 0x0375 : -0x0375);
@@ -947,11 +952,14 @@ unsigned MmxZeroWeaponTick(uint8_t r[0x20000], unsigned d, unsigned active) {
 }
 unsigned MmxZeroResponse(uint8_t *r, unsigned enemy, unsigned projectile,
                          unsigned original) {
+  if (body_hooks && body_hooks->response)
+    original = body_hooks->response(r, enemy, projectile, original);
   const MmxZeroExtension *ext = live_extension();
   return ext && ext->response ?
       ext->response(r, enemy, projectile, original) : original;
 }
 unsigned MmxZeroDamage(uint8_t r[0x20000], unsigned enemy, unsigned projectile, unsigned original) {
+  if (body_hooks && body_hooks->damage) original = body_hooks->damage(r, enemy, projectile, original);
   unsigned value = original;
   if (poses && own_projectile(r, projectile) && projectile == state.projectile &&
       enemy >= 0xe68 && enemy < 0x1228 && (enemy & 63) == 0x28 && original && !(original & 128)) {
@@ -967,6 +975,7 @@ unsigned MmxZeroDamage(uint8_t r[0x20000], unsigned enemy, unsigned projectile, 
       ext->damage(r, enemy, projectile, value) : value;
 }
 unsigned MmxZeroHitbox(const uint8_t r[0x20000], unsigned enemy, unsigned projectile, unsigned original) {
+  if (body_hooks && body_hooks->hitbox) original = body_hooks->hitbox(r, enemy, projectile, original);
   unsigned value = original;
   if (poses && own_projectile(r, projectile) && projectile == state.projectile &&
       enemy >= 0xe68 && enemy < 0x1228 && (enemy & 63) == 0x28 &&

@@ -1,0 +1,28 @@
+format_version = 1
+id = "megaman-x.character.axl"
+version = "0.0.1"
+name = "X8 Axl"
+author = "KamiSquad_X"
+description = "Axl from Mega Man X8 16-bit by Alysson da Paz (Zashiko / TagTeam mod), with his original sprites. Mega Man X8 16-bit is free fan software under the X8 16-bit License: not for monetization; credits in assets/axl."
+license = "LicenseRef-X8-16-bit"
+resolver = "declarative"
+save_compatibility = "requires-same-mods"
+
+[[target]]
+game_id = "megaman-x-us"
+rom_sha256 = "b8f70a6e7fb93819f79693578887e2c11e196bdf1ac6ddc7cb924b1ad0be2d32"
+
+[[feature]]
+id = "axl"
+name = "Add Axl"
+description = "CHANGE PLAYER (Select) switches between X and Axl, who share health and weapons; with Add Zero too it cycles X, Zero and Axl (choose a team with Solo Team select). Axl rapid-fires while SHOT is held and aims in 8 directions with the d-pad, standing still to aim on the ground. SHOT2 fires his copy shot, or the equipped weapon's charged shot. Jump again in the air and hold to hover. Dash in 8 directions in the air. Down + Dash rolls through attacks. ARMOR ABILITY (R2) with a full bar fires GigaCrash across the whole screen. Selecting Add Axl turns off Co-op."
+group = "Characters"
+order = 1
+default_enabled = false
+
+[[plugin]]
+feature = "axl"
+id = "megaman-x.axl"
+
+# The co-op modes claim this plugin too, so the launcher keeps them apart
+# from Add Axl. Add Zero and Solo Team select are compatible.

@@ -50,7 +50,7 @@ void MmxBossRushReset(void) {
 }
 MmxBossRushScratchState MmxBossRushScratchGetState(void) {return scratch;}
 bool MmxBossRushScratchValidState(const MmxBossRushScratchState *s) {
-  return s && s->active<=2 && !s->reserved[0] && !s->reserved[1] && !s->reserved[2];
+  return s && s->active<=2 && s->escape<=1 && !s->reserved[0] && !s->reserved[1];
 }
 bool MmxBossRushScratchSetState(const MmxBossRushScratchState *s) {
   if(!MmxBossRushScratchValidState(s)) return false;
