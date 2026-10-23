@@ -1349,7 +1349,10 @@ static void rush_combo_sound_checks(void) {
   check(!silent,"every landed combo hit plays the boss-hurt sound");
   puts("MMX BOSS RUSH COMBO SOUND CHECKS PASSED");
 }
+#include "mmx_boss_rush_coop_isolation_test.inc"
 #include "mmx_boss_rush_reports_test.inc"
+#include "mmx_gravity_rush_test.inc"
+#include "mmx_boss_rush_pause_spawn_test.inc"
 static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual,size_t cap) {
   rush_rhino_launcher();
   if(getenv("MMX_REPLAY_SCAN")) {rush_replay_scan(getenv("MMX_REPLAY_SCAN"));return;}
@@ -1542,7 +1545,18 @@ static void rush_runtime_checks(uint8_t *start,uint8_t *expected,uint8_t *actual
     puts("MMX BOSS RUSH ARENA CHECKS PASSED");
     return;
   }
+  if(getenv("MMX_BOSS_RUSH_PAUSE_SPAWN_TEST")) {rush_pause_spawn_checks(start,expected,cap);return;}
   if(getenv("MMX_BOSS_RUSH_REPORT_TEST")) {rush_report_checks(start,expected,cap);return;}
+  if(getenv("MMX_BOSS_RUSH_GRAVITY_TEST")) {rush_gravity_checks(start,expected,actual,cap);return;}
+  if(getenv("MMX_ZERO_SABER_PERF_TEST")) {
+    for(unsigned t=0;t<1500;++t) {
+      frame(0);rush_keep_players_alive();MmxBossRushState s=MmxBossRushGetState();
+      if(s.bosses[0].phase==MMX_RUSH_FIGHTING && s.bosses[1].phase==MMX_RUSH_FIGHTING)break;
+    }
+    saber_perf_checks("boss-rush",start,expected,actual,cap);return;
+  }
+  if(getenv("MMX_BOSS_RUSH_COOP_WEAPON_TEST")) {rush_coop_weapon_checks(start,cap);return;}
+  if(getenv("MMX_BOSS_RUSH_COOP_ISOLATION_TEST")) {rush_coop_isolation_checks(start,cap);return;}
   if(getenv("MMX_BOSS_RUSH_COOP_COMBAT_TEST")) {rush_coop_combat_checks(start,expected,cap);return;}
   if(getenv("MMX_BOSS_RUSH_MENU_TEST")) {rush_return_title_checks();return;}
   if(getenv("MMX_BOSS_RUSH_STATE_FORMAT_TEST")) {rush_state_format_checks(start,expected,actual,cap);return;}

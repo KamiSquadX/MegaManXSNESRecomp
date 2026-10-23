@@ -117,6 +117,9 @@ Select **Modern** under **Zero behavior** in either Zero mod for saber combat
 and extra aerial movement. **X3 Behavior** is the default. **Add Zero** and
 **X / Zero Co-op** are alternatives; enabling one disables the other.
 
+All Zero styles can break blocks with their head and feet from the start,
+including in co-op. X still needs his corresponding armor upgrades.
+
 For widescreen, enable **Widescreen** in Mods and choose your view aspect.
 **Display Aspect** in Settings controls pixel proportions. Netplay uses the
 original view or fixed 16:9, 21:9, or 32:9.
@@ -127,6 +130,30 @@ No ROMs or extracted assets are included in the downloads.
 
 For Storm Eagle's speedrun trick and local practice saves, see the
 [Magic Carpet guide](docs/magic-carpet.md).
+
+### Which ROM?
+
+The game needs the **v1.1 (Rev 1)** cartridge dump. The original v1.0 release
+has different code and is refused. Checksums are for the ROM without a
+512-byte copier header; the launcher removes the header before checking.
+
+| Use for | No-Intro name | SHA-256 | SHA-1 | CRC32 |
+|---|---|---|---|---|
+| Game | Mega Man X (USA) (Rev 1) | `b8f70a6e7fb93819f79693578887e2c11e196bdf1ac6ddc7cb924b1ad0be2d32` | `c65216760ba99178100a10d98457cf11496c2097` | `DED53C64` |
+| Zero, co-op, X3 weapons | Mega Man X3 (USA) | `65b03268afac296330e8ff8d60dd0825879e13ed658b37713c034a3bd074f1d7` | `b226f7ec59283b05c1e276e2f433893f45027cac` | `FA0FE671` |
+| X2 weapons | Mega Man X2 (USA) | `f3246755f608a1e1dc9c848b61da3b824c7853b29b3be40df6fc7f2793a887ed` | `637079014421563283cded6aeaa0604597b2e33c` | `947B0355` |
+
+If the launcher refuses a ROM, it says which dump you picked and what it
+needs. For example: *"This is Mega Man X (USA) v1.0. Mega Man X needs Mega Man
+X (USA) v1.1 (Rev 1) (SHA-256 b8f70a6e…)"*. It recognizes v1.0, the European
+and Japanese releases, the Legacy Collection and Mega Man X Collection
+extracts, and X2/X3 picked in the wrong place. An unknown file is described by
+its internal header, which also shows whether the ROM has been patched. ZIP
+and 7z archives are reported too, so extract the ROM first. **Copy details**
+copies your file's checksums for a bug report.
+
+Do not pick a ROM patched for MSU-1, a translation or a hack. MSU-1 music,
+Zero and co-op are added through **Mods**.
 
 ## Controls and co-op
 

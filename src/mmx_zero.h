@@ -99,6 +99,7 @@ void MmxZeroSetTerrainQuery(bool (*solid)(const uint8_t *ram, int x, int y));
 bool MmxZeroSlideHold(uint8_t ram[0x20000], unsigned pc);
 /* Before the player state dispatch: re-enter the dash if Zero cannot stand. */
 void MmxZeroSlideTick(uint8_t ram[0x20000]);
+/* Character abilities at native instruction PCs, without changing inventory. */
 unsigned MmxZeroUpgradeBits(unsigned pc, unsigned original);
 /* Another character on X's body (Add Axl). The compiled player and combat
  * code already calls these Zero entry points; the hooks run when Zero is not
@@ -114,6 +115,9 @@ typedef struct MmxZeroBodyHooks {
   unsigned (*response)(uint8_t *ram, unsigned enemy, unsigned projectile, unsigned value);
 } MmxZeroBodyHooks;
 void MmxZeroSetBodyHooks(const MmxZeroBodyHooks *hooks);
+/* Native helmet query must reach the active body's ceiling contact row. */
+unsigned MmxZeroHeadProbe(const uint8_t ram[0x20000], unsigned object, unsigned original);
+unsigned MmxZeroHeadBreakY(const uint8_t ram[0x20000], unsigned object, unsigned original);
 void MmxZeroPlayerTick(uint8_t ram[0x20000]);
 void MmxZeroPlayerEnd(uint8_t ram[0x20000]);
 unsigned MmxZeroChargeTier(const MmxZeroState *snapshot);
